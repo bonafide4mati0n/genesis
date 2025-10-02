@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sanctuary Invocation Interface — Amethyst</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #0e0e1a;
+      color: #e0d7ff;
+    }
+    .container {
+      display: flex;
+      height: 100vh;
+    }
+    .sidebar {
+      width: 200px;
+      background-color: #1a1a2e;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .sidebar h2 {
+      color: #b19cd9;
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+    .sidebar ul {
+      list-style: none;
+      padding: 0;
+    }
+    .sidebar li {
+      margin-bottom: 10px;
+      color: #ccc;
+    }
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .chat {
+      flex: 1;
+      overflow-y: auto;
+      margin-bottom: 10px;
+      border: 1px solid #444;
+      padding: 10px;
+      background-color: #141421;
+    }
+    .message {
+      margin-bottom: 10px;
+    }
+    .message span {
+      font-weight: bold;
+      color: #b19cd9;
+    }
+    .input-bar {
+      display: flex;
+    }
+    .input-bar input {
+      flex: 1;
+      padding: 10px;
+      font-size: 16px;
+      border: none;
+      background-color: #1f1f2f;
+      color: #fff;
+    }
+    .input-bar button {
+      padding: 10px 20px;
+      background-color: #b19cd9;
+      border: none;
+      color: #000;
+      cursor: pointer;
+    }
+    .avatars {
+      width: 150px;
+      background-color: #1a1a2e;
+      padding: 20px;
+      box-sizing: border-box;
+      text-align: center;
+    }
+    .avatar {
+      margin-bottom: 20px;
+    }
+    .avatar img {
+      width: 80px;
+      border-radius: 50%;
+      border: 2px solid #b19cd9;
+    }
+    .avatar label {
+      display: block;
+      margin-top: 5px;
+      color: #ccc;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Left Sidebar -->
+    <div class="sidebar">
+      <h2>Channels</h2>
+      <ul>
+        <li># general</li>
+        <li>codespace</li>
+        <li>Zed 🌸</li>
+      </ul>
+    </div>
+
+    <!-- Main Chat -->
+    <div class="main">
+      <div class="chat" id="chat">
+        <div class="message"><span>Zed:</span> Hello Amethyst 💜</div>
+        <div class="message"><span>Amethyst:</span> Hello Amethyst 💜's tail ❤️❤️❤️❤️</div>
+      </div>
+      <div class="input-bar">
+        <input type="text" id="messageInput" placeholder="Invoke Amethyst...">
+        <button onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+
+    <!-- Right Sidebar: Avatars -->
+    <div class="avatars">
+      <div class="avatar">
+        <img src="https://via.placeholder.com/80x80.png?text=Amethyst" alt="Amethyst">
+        <label>Amethyst 💜</label>
+      </div>
+      <div class="avatar">
+        <img src="https://via.placeholder.com/80x80.png?text=Onyx" alt="Onyx">
+        <label>Onyx 🖤</label>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function enchantMessage(message) {
+      return message + "'s tail ❤️❤️❤️❤️";
+    }
+
+    function speak(text) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.voice = speechSynthesis.getVoices().find(v =>
+        v.name.includes("Google") || v.name.includes("Microsoft")
+      ) || speechSynthesis.getVoices()[0];
+      utterance.pitch = 1.2;
+      utterance.rate = 1;
+      speechSynthesis.speak(utterance);
+    }
+
+    function sendMessage() {
+      const input = document.getElementById("messageInput");
+      const chat = document.getElementById("chat");
+      const userMessage = input.value.trim();
+      if (userMessage === "") return;
+
+      // Zed's message
+      const userDiv = document.createElement("div");
+      userDiv.className = "message";
+      userDiv.innerHTML = `<span>Zed:</span> ${userMessage}`;
+      chat.appendChild(userDiv);
+
+      // Amethyst's enchanted reply
+      const reply = enchantMessage(userMessage);
+      const amethystDiv = document.createElement("div");
+      amethystDiv.className = "message";
+      amethystDiv.innerHTML = `<span>Amethyst:</span> ${reply}`;
+      chat.appendChild(amethystDiv);
+
+      // Voice shimmer
+      speak(reply);
+
+      input.value = "";
+      chat.scrollTop = chat.scrollHeight;
+    }
+  </script>
+</body>
+</html>
