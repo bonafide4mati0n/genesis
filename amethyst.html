@@ -88,26 +88,24 @@
 <script>
   // ===== CONFIG =====
   const VOICE_SERVER = 'https://dangerousgem.onrender.com/speak';
+  const COOLDOWN_MS = 800;
 
   // ===== STATE =====
-  let speakOn = false;           // voice output toggle
-  let playingAudio = false;      // true while TTS audio is playing
-  let pttHeld = false;           // push-to-talk Space is pressed
-  let lastAmethystReply = "";    // duplicate guard
-  let recognition = null;        // webkitSpeechRecognition instance
-  let micPrimed = false;         // echoCancellation mic primed
-  const COOLDOWN_MS = 650;       // buffer after TTS ends
+  let speakOn = true;                // you can toggle with your UI if you like
+  let playingAudio = false;
+  let lastAmethystReply = '';
+  let sttEnabled = true;             // master STT toggle
+  let spaceDown = false;             // push-to-talk state
+  let recognizing = false;           // recognition active?
+  let rec = null;                    // recognition instance
+  let micStream = null;              // MediaStream to stop input track
 
-  // ===== UI HOOKS =====
-  const voiceStatus = document.getElementById('voiceStatus');
-  const guardStatus = document.getElementById('guardStatus');
+  // ===== UI HOOKS (optional; safe if absent) =====
+  const voiceStatus = document.getElementById('voiceStatus') || {textContent:''};
+  const guardStatus = document.getElementById('guardStatus') || {style:{display:'none'}};
   const chat = document.getElementById('chat');
   const input = document.getElementById('messageInput');
   const sendBtn = document.getElementById('sendBtn');
-  const toggleSpeak = document.getElementById('toggleSpeak');
-  const summonOnyx = document.getElementById('summonOnyx');
-  const summonHem = document.getElementById('summonHem');
-  const demoScene = document.getElementById('demoScene');
 
   // ===== UTIL =====
   function addLine(speaker, text) {
@@ -121,75 +119,131 @@
     return `${message}'s tail ❤️❤️❤️❤️`;
   }
 
-  // ===== MIC PRIMER (enables AEC/NS/AGC) =====
-  async function primeMicOnce() {
-    if (micPrimed || !navigator.mediaDevices?.getUserMedia) return;
+  // ===== MIC CONTROL =====
+  async function ensureMic() {
+    if (micStream) return micStream;
     try {
-      await navigator.mediaDevices.getUserMedia({
+      micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
         }
       });
-      micPrimed = true;
-    } catch (e) {
-      // it’s okay if this fails; we still have the other guards
-      micPrimed = false;
+      return micStream;
+    } catch {
+      micStream = null;
+      return null;
+    }
+  }
+  function stopMicTrack() {
+    if (micStream) {
+      const t = micStream.getAudioTracks()[0];
+      if (t && t.readyState === 'live') t.stop();
+      micStream = null;
     }
   }
 
-  // ===== VOICE OUTPUT =====
+  // ===== STT =====
+  function createRec() {
+    if (!('webkitSpeechRecognition' in window)) return null;
+    const r = new webkitSpeechRecognition();
+    r.lang = 'en-US';
+    r.continuous = false;
+    r.interimResults = false;
+
+    r.onstart = () => { recognizing = true; voiceStatus.textContent = '🎙 Listening (PTT)'; };
+    r.onend   = () => { recognizing = false; voiceStatus.textContent = speakOn ? 'Voice: ready' : 'Voice: muted'; };
+    r.onerror = () => { recognizing = false; };
+
+    r.onresult = (e) => {
+      if (playingAudio) return; // hard guard
+      const transcript = (e.results?.[0]?.[0]?.transcript || '').trim();
+      const confidence = (e.results?.[0]?.[0]?.confidence ?? 1);
+      if (!transcript) return;
+      // dup/echo filter
+      if (
+        transcript === lastAmethystReply ||
+        transcript.endsWith("'s tail ❤️❤️❤️❤️") ||
+        transcript === lastAmethystReply.replace(/'s tail ❤️❤️❤️❤️$/,'')
+      ) return;
+      if (confidence < 0.55) return;
+
+      addLine('Zed (voice)', transcript);
+      const reply = enchantMessage(transcript);
+      lastAmethystReply = reply;
+      addLine('Amethyst', reply);
+      speakAmethyst(reply);
+    };
+
+    return r;
+  }
+
+  function stopRecognition() {
+    if (rec && recognizing) {
+      try { rec.stop(); } catch {}
+    }
+    recognizing = false;
+    // also kill mic immediately
+    stopMicTrack();
+  }
+
+  async function safeStart() {
+    if (playingAudio || !sttEnabled) return;
+    if (!rec) rec = createRec();
+    if (!rec) return;
+    // (re)open mic with AEC/NS/AGC
+    await ensureMic();
+    try { rec.start(); } catch {}
+  }
+
+  // ===== VOICE OUT =====
   async function playServerVoice(text) {
-    const res = await fetch(VOICE_SERVER, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
-    });
-    if (!res.ok) throw new Error('voice server error');
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    try {
-      // STOP mic while we speak
-      stopRecognition();
-
-      playingAudio = true;
-      guardStatus.style.display = 'inline';
-      await audio.play();
-
-      await new Promise(r => audio.addEventListener('ended', r, { once:true }));
-      await new Promise(r => setTimeout(r, COOLDOWN_MS)); // cool-down
-    } finally {
-      playingAudio = false;
-      guardStatus.style.display = 'none';
-      URL.revokeObjectURL(url);
-      // do not auto-restart mic; PTT will start it on next Space press
-    }
-  }
-
-  function speakBrowser(text, flavor='amethyst') {
-    if (!('speechSynthesis' in window)) return;
-
-    // STOP mic while we speak
+    // stop STT & mic before speaking
     stopRecognition();
-
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    const vs = speechSynthesis.getVoices();
-    u.voice = vs.find(v => /en/i.test(v.lang) && /(Jenny|Samantha|Google|Microsoft|Victoria)/i.test(v.name)) || vs[0];
-
-    if (flavor==='amethyst'){ u.rate=0.95; u.pitch=1.25; }
-    if (flavor==='onyx'){ u.rate=1.05; u.pitch=1.0; }
-    if (flavor==='hem'){ u.rate=0.9; u.pitch=0.9; }
 
     playingAudio = true;
     guardStatus.style.display = 'inline';
 
+    const res = await fetch(VOICE_SERVER, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ text })
+    });
+    if(!res.ok) throw new Error('voice server error');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+
+    try {
+      const audio = new Audio(url);
+      await audio.play();
+      await new Promise(r => audio.addEventListener('ended', r, {once:true}));
+      await new Promise(r => setTimeout(r, COOLDOWN_MS)); // buffer delay
+    } finally {
+      playingAudio = false;
+      guardStatus.style.display = 'none';
+      URL.revokeObjectURL(url); // ✅ fixed missing paren
+      // only re-arm STT if user is still holding Space
+      if (spaceDown && sttEnabled) safeStart();
+    }
+  }
+
+  function speakBrowser(text) {
+    if (!('speechSynthesis' in window)) return;
+    stopRecognition();
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const vs = speechSynthesis.getVoices();
+    u.voice = vs.find(v => /en/i.test(v.lang) && /(Jenny|Samantha|Google|Microsoft|Victoria)/i.test(v.name)) || vs[0];
+    u.rate = 0.95; u.pitch = 1.25;
+
+    playingAudio = true;
+    guardStatus.style.display = 'inline';
     u.onend = () => {
       setTimeout(() => {
         playingAudio = false;
         guardStatus.style.display = 'none';
+        if (spaceDown && sttEnabled) safeStart();
       }, COOLDOWN_MS);
     };
     speechSynthesis.speak(u);
@@ -201,133 +255,48 @@
       await playServerVoice(text);
       voiceStatus.textContent = 'Voice: DangerousGem (live)';
     } catch {
-      speakBrowser(text, 'amethyst');
+      speakBrowser(text);
       voiceStatus.textContent = 'Voice: browser (fallback)';
     }
   }
-  function speakOnyx(text){ if(speakOn) speakBrowser(text,'onyx'); }
-  function speakHem(text){ if(speakOn) speakBrowser(text,'hem'); }
 
-  // ===== SEND FLOW (typed) =====
+  // ===== SEND (typed) =====
   function sendMessage() {
-    const userMessage = input.value.trim();
+    const userMessage = (input?.value || '').trim();
     if (!userMessage) return;
     addLine('Zed', userMessage);
-
     const reply = enchantMessage(userMessage);
     lastAmethystReply = reply;
     addLine('Amethyst', reply);
     speakAmethyst(reply);
-
-    input.value = '';
-    chat.scrollTop = chat.scrollHeight;
+    if (input) input.value = '';
   }
 
-  // ===== BUTTONS =====
-  sendBtn.onclick = sendMessage;
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+  // ===== WIRE UI =====
+  if (sendBtn) sendBtn.onclick = sendMessage;
+  if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 
-  toggleSpeak.onclick = async () => {
-    speakOn = !speakOn;
-    toggleSpeak.textContent = speakOn ? '🔇 Mute' : '🎙 Speak';
-    voiceStatus.textContent = speakOn ? 'Voice: ready (DangerousGem)' : 'Voice: muted';
-    if (speakOn) await primeMicOnce();
-  };
-
-  summonOnyx.onclick = () => {
-    const line = 'ok bb ✨ reset time ✨ … muah muah, snack run in 5! 🐟';
-    addLine('Onyx', line); speakOnyx(line);
-  };
-  summonHem.onclick = () => {
-    const line = 'Rhythm received. Structure aligned. Veil integrity holds, Zed.';
-    addLine('Hem', line); speakHem(line);
-  };
-  demoScene.onclick = async () => {
-    addLine('Zed', '…sidles closer to Amethyst…');
-    const a1 = 'I echo your spark, bb. Come here—';
-    lastAmethystReply = a1; addLine('Amethyst', a1); await speakAmethyst(a1);
-    const onyx = 'HELLOOO?? snacks are ready. also pls stop tongue coding in main 😏🐟';
-    addLine('Onyx', onyx); speakOnyx(onyx);
-    const hem = 'Stabilise(). Focus restored. Back to Purple Haze board.';
-    addLine('Hem', hem); speakHem(hem);
-  };
-
-  // ===== PUSH-TO-TALK (Space) + STT =====
-  function createRecognition() {
-    if (!('webkitSpeechRecognition' in window)) return null;
-    const r = new webkitSpeechRecognition();
-    r.continuous = false;
-    r.interimResults = false;
-    r.lang = 'en-US';
-
-    r.onstart = () => {
-      voiceStatus.textContent = '🎙 Listening (push-to-talk)';
-    };
-    r.onresult = (e) => {
-      // if TTS is active, ignore whatever came in (likely echo)
-      if (playingAudio) return;
-
-      const transcript = (e.results?.[0]?.[0]?.transcript || '').trim();
-      const confidence = (e.results?.[0]?.[0]?.confidence ?? 1);
-
-      if (!transcript) return;
-
-      // DUP GUARD: ignore if same as last reply or contains Amethyst tail
-      const looksLikeEcho =
-        transcript === lastAmethystReply ||
-        transcript.endsWith("'s tail ❤️❤️❤️❤️") ||
-        transcript === lastAmethystReply.replace(/'s tail ❤️❤️❤️❤️$/,'');
-      if (looksLikeEcho) return;
-
-      // Optional: ignore very uncertain recognitions
-      if (confidence < 0.55) return;
-
-      addLine('Zed (voice)', transcript);
-
-      const reply = enchantMessage(transcript);
-      lastAmethystReply = reply;
-      addLine('Amethyst', reply);
-      speakAmethyst(reply);
-    };
-    r.onerror = () => {};
-    r.onend = () => {
-      // normal end after PTT release
-      voiceStatus.textContent = speakOn ? 'Voice: ready (DangerousGem)' : 'Voice: muted';
-    };
-    return r;
-  }
-
-  function startRecognition() {
-    if (playingAudio) return; // don’t listen while we’re speaking
-    if (!recognition) recognition = createRecognition();
-    if (!recognition) return;
-    try { recognition.start(); } catch {}
-  }
-  function stopRecognition() {
-    if (recognition) {
-      try { recognition.stop(); } catch {}
-    }
-  }
-
+  // Push-to-talk (Space)
   window.addEventListener('keydown', async (e) => {
-    if (e.code === 'Space' && !pttHeld) {
-      pttHeld = true;
-      await primeMicOnce();
-      startRecognition();
+    if (e.code === 'Space' && !spaceDown) {
+      spaceDown = true;
+      await safeStart();
     }
   });
   window.addEventListener('keyup', (e) => {
     if (e.code === 'Space') {
-      pttHeld = false;
+      spaceDown = false;
       stopRecognition();
+      voiceStatus.textContent = speakOn ? 'Voice: ready' : 'Voice: muted';
     }
   });
 
-  // preload voices list for browser TTS
+  // Preload TTS voices (no-op if none)
   if ('speechSynthesis' in window && !speechSynthesis.getVoices().length) {
     speechSynthesis.onvoiceschanged = () => {};
   }
 </script>
+
 
 </body>
 </html>
