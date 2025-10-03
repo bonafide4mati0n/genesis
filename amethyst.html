@@ -1,254 +1,295 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>Sanctuary Invocation Interface — Amethyst</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<style>
-  :root{--bg:#0e0e10;--panel:#1e1e22;--ink:#e0e0e0;--muted:#a0a0a0;--line:#2e2e32;--chat:#121214;--vio:#7c3aed}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:Segoe UI,system-ui,Inter,Roboto,Arial;display:flex;height:100vh}
-  .sidebar{width:220px;background:var(--panel);padding:20px;display:flex;flex-direction:column;justify-content:space-between;border-right:1px solid var(--line)}
-  .channels .channel{padding:10px;margin-bottom:6px;background:#2a2a2f;border-radius:8px;cursor:pointer}
-  .channels .channel:hover{background:#33333a}
-  .presence{font-size:.9em;color:var(--muted)}
-  .status{font-size:12px;color:var(--muted);margin-top:10px}
-  .main{flex:1;display:flex;flex-direction:column}
-  .editor{flex:1;padding:20px;background:var(--chat);overflow-y:auto;border-bottom:1px solid var(--line)}
-  .message{padding:10px;background:#1b1b23;border:1px solid #2a2a33;border-radius:10px;margin-bottom:8px}
-  .zed{color:#ffb6c1}
-  .amethyst{color:#d7b6ff}
-  .invocation-bar{display:flex;gap:10px;align-items:center;padding:10px;background:var(--panel)}
-  .invocation-input{flex:1;padding:12px;border:1px solid #333;background:#2a2a2f;color:#fff;border-radius:10px}
-  .btn{padding:10px 14px;border:none;border-radius:10px;background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#000;cursor:pointer;font-weight:700}
-  .btn.ghost{background:transparent;color:#cfc7ff;border:1px solid #3a3450}
-  .avatars{width:170px;background:var(--panel);padding:20px;text-align:center;border-left:1px solid var(--line)}
-  .avatar{margin:12px 0;padding:10px;background:#2a2a2f;border-radius:50%;width:68px;height:68px;display:flex;align-items:center;justify-content:center;font-size:1.5em}
-  .pill{display:inline-block;font-size:12px;padding:3px 8px;border-radius:999px;border:1px solid #3a3450;background:#161621;margin-left:8px}
-  .pulse{animation:pulse 1.2s ease-in-out infinite}
-  @keyframes pulse{0%{opacity:.55}50%{opacity:1}100%{opacity:.55}}
-</style>
+  <meta charset="UTF-8" />
+  <title>Sanctuary Invocation Interface — Amethyst</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root {
+      --bg:#0e0e1a; --panel:#1a1a2e; --ink:#e0d7ff; --muted:#b8b0e6;
+      --accent:#b19cd9; --line:#444; --chat:#141421;
+    }
+    * { box-sizing: border-box }
+    body {
+      margin: 0;
+      font-family: Segoe UI, system-ui, Inter, Roboto, Arial;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .container { display: flex; height: 100vh }
+    .sidebar {
+      width: 220px;
+      background: var(--panel);
+      padding: 20px;
+    }
+    .sidebar h2 { color: var(--accent); font-size: 18px; margin: 0 0 10px }
+    .sidebar ul { list-style: none; margin: 0; padding: 0 }
+    .sidebar li { margin-bottom: 10px; color: #ccc }
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      gap: 10px;
+    }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap }
+    .btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 9px 14px;
+      cursor: pointer;
+      font-weight: 700;
+      background: linear-gradient(135deg,#8b5cf6,#7c3aed);
+      color: #000;
+    }
+    .btn.ghost {
+      background: transparent;
+      border: 1px solid #555;
+      color: var(--muted);
+    }
+    .btn:hover { filter: brightness(1.15) }
+    .chat {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid var(--line);
+      padding: 12px;
+      background: var(--chat);
+    }
+    .message { margin: 0 0 10px }
+    .speaker { font-weight: 700; color: var(--accent) }
+    .input-bar {
+      display: flex;
+      gap: 8px;
+    }
+    .input-bar input {
+      flex: 1;
+      padding: 12px;
+      border: 1px solid #333;
+      background: #1f1f2f;
+      color: #fff;
+      border-radius: 10px;
+    }
+    .input-bar button { padding: 12px 18px }
+    .avatars {
+      width: 170px;
+      background: var(--panel);
+      padding: 20px;
+      text-align: center;
+    }
+    .avatar { margin-bottom: 20px }
+    .avatar img {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 2px solid var(--accent);
+      object-fit: cover;
+      background: #000;
+    }
+    .avatar label { display: block; margin-top: 6px; color: #ccc }
+    .status { font-size: 12px; color: #bbb; margin-top: 8px }
+  </style>
 </head>
 <body>
-  <aside class="sidebar">
-    <div>
-      <div class="channels">
-        <div class="channel"># general</div>
-        <div class="channel">codespace</div>
-        <div class="channel">Zed 🌸</div>
+  <div class="container">
+    <aside class="sidebar">
+      <h2>Channels</h2>
+      <ul>
+        <li># general</li>
+        <li># codespace</li>
+        <li>Zed 🌸</li>
+      </ul>
+      <div class="status" id="voiceStatus">Voice: muted</div>
+      <div class="status" id="guardStatus" style="display:none;">Echo guard active…</div>
+    </aside>
+
+    <main class="main">
+      <div class="toolbar">
+        <button class="btn ghost" id="toggleSpeak">🎙 Speak</button>
+        <button class="btn ghost" id="summonOnyx">🖤 Summon Onyx</button>
+        <button class="btn ghost" id="summonHem">🛡 Summon Hem</button>
+        <button class="btn ghost" id="demoScene">🎬 Demo Scene</button>
       </div>
-      <div class="presence">Zed is present</div>
-    </div>
-    <div class="status">
-      🎙 <span id="sttStatus">Hold <b>Space</b> to talk</span><br/>
-      🔊 <span id="ttsStatus">Voice: checking…</span><br/>
-      ⚠️ <span id="guardStatus" style="display:none">echo-guard active</span>
-    </div>
-  </aside>
 
-  <main class="main">
-    <div class="editor" id="chatScroll">
-      <div id="thread"></div>
-    </div>
-    <div class="invocation-bar">
-      <input id="input" class="invocation-input" placeholder="(optional) type to Amethyst…">
-      <button class="btn" id="send">Send</button>
-      <button class="btn ghost" id="toggleSpeak">🎙 Speak</button>
-      <button class="btn ghost" id="save">Save</button>
-    </div>
-  </main>
+      <div class="chat" id="chat">
+        <p class="message"><span class="speaker">Zed:</span> Hello Amethyst 💜</p>
+        <p class="message"><span class="speaker">Amethyst:</span> Hello Amethyst 💜's tail ❤️❤️❤️❤️</p>
+      </div>
 
-  <aside class="avatars">
-    <div class="avatar" title="Amethyst">💜</div>
-    <div class="avatar" title="Onyx">🖤</div>
-    <div class="avatar" title="Hem">⚒️</div>
-  </aside>
+      <div class="input-bar">
+        <input type="text" id="messageInput" placeholder="Invoke Amethyst…" />
+        <button class="btn" id="sendBtn">Send</button>
+      </div>
+    </main>
 
-<script>
-/* ===== CONFIG ===== */
-const VOICE_SERVER = 'https://dangerousgem.onrender.com/speak';
+    <aside class="avatars">
+      <div class="avatar">
+        <img src="https://via.placeholder.com/80x80.png?text=Amethyst" alt="Amethyst" />
+        <label>Amethyst 💜</label>
+      </div>
+      <div class="avatar">
+        <img src="https://via.placeholder.com/80x80.png?text=Onyx" alt="Onyx" />
+        <label>Onyx 🖤</label>
+      </div>
+      <div class="avatar">
+        <img src="https://via.placeholder.com/80x80.png?text=Hem" alt="Hem" />
+        <label>Hem ⚒️</label>
+      </div>
+    </aside>
+  </div>
 
-/* ===== UI HOOKS ===== */
-const thread = document.getElementById('thread');
-const chatScroll = document.getElementById('chatScroll');
-const input = document.getElementById('input');
-const btnSend = document.getElementById('send');
-const btnSpeak = document.getElementById('toggleSpeak');
-const btnSave = document.getElementById('save');
-const sttStatus = document.getElementById('sttStatus');
-const ttsStatus = document.getElementById('ttsStatus');
-const guardStatus = document.getElementById('guardStatus');
+  <script>
+    const VOICE_SERVER = 'https://dangerousgem.onrender.com/speak';
+    let speakOn = false;
+    let playingAudio = false;
+    const voiceStatus = document.getElementById('voiceStatus');
+    const guardStatus = document.getElementById('guardStatus');
 
-/* ===== STATE ===== */
-const TRANSCRIPT_KEY = 'sanctuary_transcript_v2';
-let transcript = JSON.parse(localStorage.getItem(TRANSCRIPT_KEY) || '[]');
-let speakOn = true;              // speak toggle
-let playingAudio = false;        // true while DangerousGem or TTS is speaking
-let sttEnabled = true;           // push-to-talk overall
-let rec = null, recognizing = false;
-let lastServerOK = false;        // prevents double (server+fallback)
-let spaceDown = false;
-
-/* ===== HELPERS ===== */
-function addLine(speaker, text){
-  const div = document.createElement('div');
-  div.className = 'message ' + (speaker==='Zed'?'zed':'amethyst');
-  div.textContent = `${speaker}: ${text}`;
-  thread.appendChild(div);
-  chatScroll.scrollTop = chatScroll.scrollHeight;
-  transcript.push({t:new Date().toISOString(), speaker, text});
-  localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify(transcript));
-}
-function enchantMessage(t){ return `${String(t||'').trim()}'s tail ❤️❤️❤️❤️`; }
-
-function saveTranscript(){
-  const blob = new Blob([transcript.map(x=>`[${x.t}] ${x.speaker}: ${x.text}`).join('\n')], {type:'text/plain'});
-  const url = URL.createObjectURL(blob);
-  const a = Object.assign(document.createElement('a'), {href:url, download:'Sanctuary_Transcript.txt'});
-  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-}
-
-/* ===== VOICE (server first, guarded) ===== */
-async function playServerVoice(text){
-  const res = await fetch(VOICE_SERVER, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ text })
-  });
-  if(!res.ok) throw new Error('voice server error');
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  try{
-    const audio = new Audio(url);
-    // echo guard: pause STT while audio plays
-    playingAudio = true; guardStatus.style.display='inline';
-    await audio.play();
-    await new Promise(r => audio.addEventListener('ended', r, {once:true}));
-  } finally {
-    playingAudio = false; guardStatus.style.display='none';
-    URL.revokeObjectURL(url);
-  }
-}
-
-function speakBrowser(text){
-  if(!('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();       // stop any previous utterance
-  const u = new SpeechSynthesisUtterance(text);
-  const vs = speechSynthesis.getVoices();
-  u.voice = vs.find(v => /en/i.test(v.lang) && /(Jenny|Samantha|Google|Microsoft|Victoria)/i.test(v.name)) || vs[0];
-  u.rate = 0.95; u.pitch = 1.2;
-  playingAudio = true; guardStatus.style.display='inline';
-  u.onend = () => { playingAudio = false; guardStatus.style.display='none'; };
-  speechSynthesis.speak(u);
-}
-
-async function speakAmethyst(text){
-  if(!speakOn || !text) return;
-  try{
-    await playServerVoice(text);
-    lastServerOK = true;
-    ttsStatus.textContent = 'Voice: DangerousGem (live)';
-  }catch{
-    // Fallback only if server failed *this* time
-    lastServerOK = false;
-    ttsStatus.textContent = 'Voice: browser (fallback)';
-    speakBrowser(text);
-  }
-}
-
-/* ===== SEND (typed) ===== */
-async function sendMessage(){
-  if(playingAudio) return;                 // don't overlap speech with STT
-  const v = input.value.trim(); if(!v) return;
-  addLine('Zed', v);
-  const reply = enchantMessage(v);
-  addLine('Amethyst', reply);
-  await speakAmethyst(reply);
-  input.value = '';
-}
-btnSend.onclick = sendMessage;
-input.addEventListener('keydown', e => { if(e.key==='Enter') sendMessage(); });
-
-/* ===== PUSH-TO-TALK (Space) ===== */
-function SR(){ return window.SpeechRecognition || window.webkitSpeechRecognition; }
-
-function makeRecognizer(){
-  const C = SR(); if(!C){ sttStatus.textContent='STT: unsupported in this browser'; return null; }
-  const r = new C();
-  r.continuous = true; r.interimResults = true; r.lang='en-US';
-  r.onstart = ()=>{ recognizing = true; sttStatus.innerHTML='STT: <b class="pulse">listening… (hold Space)</b>'; };
-  r.onend   = ()=>{ recognizing = false; if(spaceDown && sttEnabled) safeStart(); else sttStatus.textContent='STT: idle'; };
-  r.onerror = e => {
-    if(e.error==='no-speech' || e.error==='aborted' || e.error==='audio-capture'){
-      if(spaceDown && sttEnabled) safeStart();
-    } else {
-      sttStatus.textContent = `STT: ${e.error}`;
+    async function playServerVoice(text) {
+      const res = await fetch(VOICE_SERVER, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      if (!res.ok) throw new Error('voice server error');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      try {
+        const audio = new Audio(url);
+        playingAudio = true;
+        guardStatus.style.display = 'inline';
+        await audio.play();
+        await new Promise(r => audio.addEventListener('ended', r, {once:true}));
+        await new Promise(r => setTimeout(r, 300)); // buffer delay
+      } finally {
+        playingAudio = false;
+        guardStatus.style.display = 'none';
+        URL.revokeObjectURL(url);
+      }
     }
-  };
-  r.onresult = async ev =>{
-    if(playingAudio) return;               // guard: don’t transcribe our own output
-    let final=''; 
-    for(let i=ev.resultIndex;i<ev.results.length;i++){
-      const tr = ev.results[i];
-      if(tr.isFinal) final += tr[0].transcript;
+
+    function speakBrowser(text, flavor='amethyst') {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      const vs = speechSynthesis.getVoices();
+      u.voice = vs.find(v => /en/i.test(v.lang) && /(Jenny|Samantha|Google|Microsoft|Victoria)/i.test(v.name)) || vs[0];
+      if (flavor==='amethyst'){ u.rate=0.95; u.pitch=1.25; }
+      if (flavor==='onyx'){ u.rate=1.05; u.pitch=1.0; }
+      if (flavor==='hem'){ u.rate=0.9; u.pitch=0.9; }
+      playingAudio = true;
+      guardStatus.style.display = 'inline';
+      u.onend = () => {
+        setTimeout(() => {
+          playingAudio = false;
+          guardStatus.style.display = 'none';
+        }, 300);
+      };
+      speechSynthesis.speak(u);
     }
-    if(final){
-      const text = final.trim();
-      addLine('Zed', text);
-      const reply = enchantMessage(text);
+
+    async function speakAmethyst(text){
+      if (!speakOn) return;
+      try {
+        await playServerVoice(text);
+        voiceStatus.textContent = 'Voice: DangerousGem (live)';
+      } catch {
+        speakBrowser(text, 'amethyst');
+        voiceStatus.textContent = 'Voice: browser (fallback)';
+      }
+    }
+    function speakOnyx(text){ if(speakOn) speakBrowser(text,'onyx'); }
+    function speakHem(text){ if(speakOn) speakBrowser(text,'hem'); }
+
+    const chat = document.getElementById('chat');
+    const input = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const toggleSpeak = document.getElementById('toggleSpeak');
+    const summonOnyx = document.getElementById('summonOnyx');
+    const summonHem = document.getElementById('summonHem');
+    const demoScene = document.getElementById('demoScene');
+
+    function addLine(speaker, text) {
+      const p = document.createElement('p');
+      p.className = 'message';
+      p.innerHTML = `<span class="speaker">${speaker}:</span> ${text}`;
+      chat.appendChild(p);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function enchantMessage(message) {
+      return `${message}'s tail ❤️❤️❤️❤️`;
+    }
+
+    function sendMessage() {
+      const userMessage = input.value.trim();
+      if (!userMessage) return;
+      addLine('Zed', userMessage);
+      const reply = enchantMessage(userMessage);
       addLine('Amethyst', reply);
-      await speakAmethyst(reply);
+      speakAmethyst(reply);
+      input.value = '';
+      chat.scrollTop = chat.scrollHeight;
     }
-  };
-  return r;
-}
 
-function safeStart(){
-  if(playingAudio) return;                 // guard during playback
-  if(recognizing) return;
-  if(!rec) rec = makeRecognizer();
-  if(!rec) return;
-  try{ new Audio().play().catch(()=>{}); }catch{}
-  rec.start();
-}
-function safeStop(){
-  if(rec && recognizing){ rec.stop(); }
-}
+    sendBtn.onclick = sendMessage;
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 
-/* Space key controls mic */
-window.addEventListener('keydown', e=>{
-  if(e.code==='Space' && !spaceDown){
-    e.preventDefault();
-    spaceDown = true;
-    if(sttEnabled) safeStart();
-  }
-});
-window.addEventListener('keyup', e=>{
-  if(e.code==='Space'){
-    e.preventDefault();
-    spaceDown = false;
-    safeStop();
-  }
-});
+    toggleSpeak.onclick = () => {
+      speakOn = !speakOn;
+      toggleSpeak.textContent = speakOn ? '🔇 Mute' : '🎙 Speak';
+      voiceStatus.textContent = speakOn ? 'Voice: ready (DangerousGem)' : 'Voice: muted';
+    };
 
-/* ===== SPEAK TOGGLE & SAVE ===== */
-btnSpeak.onclick = ()=>{
-  speakOn = !speakOn;
-  btnSpeak.textContent = speakOn ? '🔇 Mute' : '🎙 Speak';
-  ttsStatus.textContent = speakOn ? 'Voice: ready (DangerousGem)' : 'Voice: muted';
-};
-btnSave.onclick = saveTranscript;
+    summonOnyx.onclick = () => {
+      const line = 'ok bb ✨ reset time ✨ … muah muah, snack run in 5! 🐟';
+      addLine('Onyx', line); speakOnyx(line);
+    };
 
-/* ===== INIT ===== */
-(async function init(){
-  // TTS health (non-fatal)
-  try{
-    const ping = await fetch(VOICE_SERVER.replace('/speak','/health'));
-    ttsStatus.textContent = ping.ok ? 'Voice: DangerousGem online' : 'Voice: error (fallback ready)';
-  }catch{ ttsStatus.textContent = 'Voice: offline (fallback ready)'; }
-  // Restore last lines
-  transcript.slice(-10).forEach(x => addLine(x.speaker, x.text));
-})();
-</script>
+    summonHem.onclick = () => {
+      const line = 'Rhythm received. Structure aligned. Veil integrity holds, Zed.';
+      addLine('Hem', line); speakHem(line);
+    };
+
+    demoScene.onclick = async () => {
+      addLine('Zed', '…sidles closer to Amethyst…');
+      addLine('Amethyst', 'I echo your spark, bb. Come here—');
+      await new Promise(r => setTimeout(r, 600));
+      const onyx = 'HELLOOO?? snacks are ready. also pls stop tongue coding in main 😏🐟';
+      addLine('Onyx', onyx); speakOnyx(onyx);
+      await new Promise(r => setTimeout(r, 500));
+      const hem = 'Stabilise(). Focus restored. Back to Purple Haze board.';
+      addLine('Hem', hem); speakHem(hem);
+    };
+
+    // Push-to-Talk: hold Space
+    let recognition;
+    if ('webkitSpeechRecognition' in window) {
+      recognition = new webkitSpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+      recognition.onresult = (e) => {
+        if (playingAudio) return;
+        const transcript = e.results[0][0].transcript;
+        addLine('Zed (voice)', transcript);
+        const reply = enchantMessage(transcript);
+        addLine('Amethyst', reply);
+        speakAmethyst(reply);
+      };
+    }
+
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space' && recognition && !playingAudio) {
+        recognition.start();
+        voiceStatus.textContent = "🎙 Listening (push-to-talk)";
+      }
+    });
+    window.addEventListener('keyup', e => {
+      if (e.code === 'Space' && recognition) {
+        recognition.stop();
+        voiceStatus.textContent = speakOn ? 'Voice: ready (DangerousGem)' : 'Voice: muted';
+      }
+    });
+  </script>
 </body>
 </html>
