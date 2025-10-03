@@ -5,43 +5,92 @@
   <title>Sanctuary Invocation Interface — Amethyst</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    :root{
+    :root {
       --bg:#0e0e1a; --panel:#1a1a2e; --ink:#e0d7ff; --muted:#b8b0e6;
       --accent:#b19cd9; --line:#444; --chat:#141421;
     }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:Segoe UI,system-ui,Inter,Roboto,Arial;background:var(--bg);color:var(--ink)}
-    .container{display:flex;height:100vh}
-    .sidebar{width:220px;background:var(--panel);padding:20px}
-    .sidebar h2{color:var(--accent);font-size:18px;margin:0 0 10px}
-    .sidebar ul{list-style:none;margin:0;padding:0}
-    .sidebar li{margin-bottom:10px;color:#ccc}
-
-    .main{flex:1;display:flex;flex-direction:column;padding:20px;gap:10px}
-    .toolbar{display:flex;gap:8px;flex-wrap:wrap}
-    .btn{border:0;border-radius:999px;padding:9px 14px;cursor:pointer;font-weight:700;
-         background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#000}
-    .btn.ghost{background:transparent;border:1px solid #555;color:var(--muted)}
-    .btn:hover{filter:brightness(1.15)}
-
-    .chat{flex:1;overflow-y:auto;border:1px solid var(--line);padding:12px;background:var(--chat)}
-    .message{margin:0 0 10px}
-    .speaker{font-weight:700;color:var(--accent)}
-
-    .input-bar{display:flex;gap:8px}
-    .input-bar input{flex:1;padding:12px;border:1px solid #333;background:#1f1f2f;color:#fff;border-radius:10px}
-    .input-bar button{padding:12px 18px}
-
-    .avatars{width:170px;background:var(--panel);padding:20px;text-align:center}
-    .avatar{margin-bottom:20px}
-    .avatar img{width:80px;height:80px;border-radius:50%;border:2px solid var(--accent);object-fit:cover;background:#000}
-    .avatar label{display:block;margin-top:6px;color:#ccc}
-    .status{font-size:12px;color:#bbb;margin-top:8px}
+    * { box-sizing: border-box }
+    body {
+      margin: 0;
+      font-family: Segoe UI, system-ui, Inter, Roboto, Arial;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .container { display: flex; height: 100vh }
+    .sidebar {
+      width: 220px;
+      background: var(--panel);
+      padding: 20px;
+    }
+    .sidebar h2 { color: var(--accent); font-size: 18px; margin: 0 0 10px }
+    .sidebar ul { list-style: none; margin: 0; padding: 0 }
+    .sidebar li { margin-bottom: 10px; color: #ccc }
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      gap: 10px;
+    }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap }
+    .btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 9px 14px;
+      cursor: pointer;
+      font-weight: 700;
+      background: linear-gradient(135deg,#8b5cf6,#7c3aed);
+      color: #000;
+    }
+    .btn.ghost {
+      background: transparent;
+      border: 1px solid #555;
+      color: var(--muted);
+    }
+    .btn:hover { filter: brightness(1.15) }
+    .chat {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid var(--line);
+      padding: 12px;
+      background: var(--chat);
+    }
+    .message { margin: 0 0 10px }
+    .speaker { font-weight: 700; color: var(--accent) }
+    .input-bar {
+      display: flex;
+      gap: 8px;
+    }
+    .input-bar input {
+      flex: 1;
+      padding: 12px;
+      border: 1px solid #333;
+      background: #1f1f2f;
+      color: #fff;
+      border-radius: 10px;
+    }
+    .input-bar button { padding: 12px 18px }
+    .avatars {
+      width: 170px;
+      background: var(--panel);
+      padding: 20px;
+      text-align: center;
+    }
+    .avatar { margin-bottom: 20px }
+    .avatar img {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 2px solid var(--accent);
+      object-fit: cover;
+      background: #000;
+    }
+    .avatar label { display: block; margin-top: 6px; color: #ccc }
+    .status { font-size: 12px; color: #bbb; margin-top: 8px }
   </style>
 </head>
 <body>
   <div class="container">
-    <!-- Left: Channels -->
     <aside class="sidebar">
       <h2>Channels</h2>
       <ul>
@@ -52,7 +101,6 @@
       <div class="status" id="voiceStatus">Voice: checking…</div>
     </aside>
 
-    <!-- Center: Chat -->
     <main class="main">
       <div class="toolbar">
         <button class="btn ghost" id="toggleSpeak">🎙 Speak</button>
@@ -72,7 +120,6 @@
       </div>
     </main>
 
-    <!-- Right: Avatars -->
     <aside class="avatars">
       <div class="avatar">
         <img src="https://via.placeholder.com/80x80.png?text=Amethyst" alt="Amethyst" />
@@ -90,39 +137,27 @@
   </div>
 
   <script>
-    // ============ Voice Layer ============
-    // Tries local voice server first (DangerousGem), falls back to Web Speech API.
     const VOICE_SERVER = 'https://dangerousgem.onrender.com/speak';
     let speakOn = false;
     const voiceStatus = document.getElementById('voiceStatus');
 
-    async function speakViaServer(text, opts={}) {
-      const payload = {
-        voice: 'DangerousGem',
-        text,
-        rate: opts.rate ?? 0.95,
-        pitch: opts.pitch ?? 1.15,
-        breathiness: opts.breathiness ?? 0.15,
-        hold: opts.hold ?? 0.03,
-        style: opts.style ?? 'warm'
-      };
+    async function speakViaServer(text) {
       const res = await fetch(VOICE_SERVER, {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(payload)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
       });
       if (!res.ok) throw new Error('voice server error');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
-      audio.play().finally(()=> URL.revokeObjectURL(url));
+      audio.play().finally(() => URL.revokeObjectURL(url));
     }
 
     function speakViaWeb(text, flavor='amethyst') {
       if (!('speechSynthesis' in window)) return;
       const u = new SpeechSynthesisUtterance(text);
       const voices = speechSynthesis.getVoices();
-      // pick something gentle/default
       u.voice = voices.find(v => /en/i.test(v.lang) && /(Jenny|Samantha|Victoria|Google|Microsoft)/i.test(v.name)) || voices[0];
       if (flavor === 'amethyst'){ u.rate=0.95; u.pitch=1.25; u.volume=1; }
       if (flavor === 'onyx'){ u.rate=1.05; u.pitch=1.0; u.volume=1; }
@@ -133,8 +168,8 @@
     async function speakAmethyst(text){
       if (!speakOn) return;
       try {
-        await speakViaServer(text, { rate:0.95, pitch:1.2, style:'warm' });
-        voiceStatus.textContent = 'Voice: DangerousGem (local)';
+        await speakViaServer(text);
+        voiceStatus.textContent = 'Voice: DangerousGem (live)';
       } catch {
         speakViaWeb(text, 'amethyst');
         voiceStatus.textContent = 'Voice: browser (fallback)';
@@ -149,12 +184,10 @@
       speakViaWeb(text, 'hem');
     }
 
-    // Prime Web Speech voices list (some browsers lazy-load)
     if (window.speechSynthesis && !speechSynthesis.getVoices().length) {
       speechSynthesis.onvoiceschanged = () => {};
     }
 
-    // ============ UI / Chat ============
     const chat = document.getElementById('chat');
     const input = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendBtn');
@@ -191,11 +224,10 @@
     sendBtn.onclick = sendMessage;
     input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 
-    // toggles
     toggleSpeak.onclick = () => {
       speakOn = !speakOn;
       toggleSpeak.textContent = speakOn ? '🔇 Mute' : '🎙 Speak';
-      if (speakOn) voiceStatus.textContent = 'Voice: ready (prefers local)';
+      voiceStatus.textContent = speakOn ? 'Voice: ready (DangerousGem)' : 'Voice: muted';
     };
 
     summonOnyx.onclick = () => {
@@ -210,7 +242,6 @@
       speakHem(line);
     };
 
-    // fun demo scene: they try to make out → Onyx + Hem interrupt 😅
     demoScene.onclick = async () => {
       addLine('Zed', '…sidles closer to Amethyst…');
       addLine('Amethyst', 'I echo your spark, bb. Come here—');
