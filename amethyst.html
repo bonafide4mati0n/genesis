@@ -17,15 +17,13 @@
     .avatar{margin:10px 0;padding:10px;background:#2e2e32;border-radius:50%;width:68px;height:68px;display:flex;align-items:center;justify-content:center;font-size:1.5em}
     .invocation-bar{display:flex;gap:10px;align-items:center;padding:10px;background:#1e1e22;border-top:1px solid #2e2e32}
     .invocation-input{flex:1;padding:10px;border:none;border-radius:8px;background:#2e2e32;color:#fff;font-size:1em}
-    .btn{padding:10px 14px;border:none;border-radius:10px;background:#6a0dad;color:#fff;cursor:pointer;font-weight:700}
-    .btn.ghost{background:transparent;color:#cfc7ff;border:1px solid #3a3450}
-    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .btn{padding:8px 12px;border:none;border-radius:10px;background:#6a0dad;color:#fff;cursor:pointer;font-weight:700}
+    .btn.ghost{background:transparent;color:#cfc7ff;border:1px solid #3a3450;margin-left:8px}
     .message-thread{display:flex;flex-direction:column;gap:8px}
-    .message{padding:10px;background:#1b1b23;border:1px solid #2a2a33;border-radius:10px}
+    .message{padding:10px;background:#1b1b23;border:1px solid #2a2a33;border-radius:10px;position:relative}
     .zed{color:#ffb6c1}
     .amethyst{color:#dda0dd}
     .status{font-size:12px;color:#a0a0a0;margin-top:6px}
-    .pill{display:inline-block;font-size:12px;padding:3px 8px;border-radius:999px;border:1px solid #3a3450;background:#161621;margin-left:8px}
     .pulse{animation:pulse 1.2s ease-in-out infinite}
     @keyframes pulse{0%{opacity:.5}50%{opacity:1}100%{opacity:.5}}
   </style>
@@ -44,10 +42,13 @@
       🎙 <span id="sttStatus">Press & hold <b>Space</b> to talk</span><br/>
       🔊 <span id="ttsStatus">Voice: checking…</span>
     </div>
+    <div>
+      <button class="btn ghost" id="toggleVC">Live Voice: Off</button>
+    </div>
   </div>
 
   <div class="main">
-    <div class="editor" id="chatThread">
+    <div class="editor">
       <div class="message-thread" id="messageThread"></div>
     </div>
     <div class="invocation-bar">
@@ -64,20 +65,27 @@
   </div>
 
 <script>
+/* --- endpoints --- */
 const VOICE_SERVER = 'https://dangerousgem.onrender.com/speak';
 const GENESIS_API  = 'https://genesis-server-g6qe.onrender.com/reply';
-const thread = document.getElementById('messageThread');
-const input  = document.getElementById('invocationInput');
-const sendBtn= document.getElementById('sendBtn');
-const saveBtn= document.getElementById('saveBtn');
-const sttStatus = document.getElementById('sttStatus');
-const ttsStatus = document.getElementById('ttsStatus');
 
+/* --- elements --- */
+const thread   = document.getElementById('messageThread');
+const input    = document.getElementById('invocationInput');
+const sendBtn  = document.getElementById('sendBtn');
+const saveBtn  = document.getElementById('saveBtn');
+const sttStatus= document.getElementById('sttStatus');
+const ttsStatus= document.getElementById('ttsStatus');
+const toggleVC = document.getElementById('toggleVC');
+
+/* --- credit saver: only auto-speak if VC mode is on --- */
+let vcMode = false;
+
+/* --- transcript --- */
 const TRANSCRIPT_KEY = 'sanctuary_transcript_v1';
 let transcript = JSON.parse(localStorage.getItem(TRANSCRIPT_KEY) || '[]');
 function pushLine(speaker, text){
-  const entry = { t: new Date().toISOString(), speaker, text };
-  transcript.push(entry);
+  transcript.push({ t:new Date().toISOString(), speaker, text });
   localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify(transcript));
 }
 function downloadTranscript(){
@@ -87,16 +95,40 @@ function downloadTranscript(){
   const a = Object.assign(document.createElement('a'), { href:url, download:'Sanctuary_Transcript.txt' });
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
+
+/* --- UI helpers --- */
 function addLine(speaker, text){
   const div = document.createElement('div');
   div.className = `message ${speaker==='Zed'?'zed':'amethyst'}`;
   div.textContent = `${speaker}: ${text}`;
+
+  if (speaker === 'Amethyst') {
+    const btn = document.createElement('button');
+    btn.textContent = '🎙 Play';
+    btn.className = 'btn ghost';
+    btn.style.position='absolute'; btn.style.right='10px'; btn.style.bottom='10px';
+    btn.onclick = () => speak(text);          // manual play -> uses credits
+    div.appendChild(btn);
+    if (vcMode) speak(text);                  // auto voice only in VC mode
+  }
+
   thread.appendChild(div);
   thread.parentElement.scrollTop = thread.parentElement.scrollHeight;
   pushLine(speaker, text);
 }
 
-let speakLock = false, speakOn = true, echoBlock = false;
+/* --- live reply --- */
+async function fetchReply(message){
+  const res = await fetch(GENESIS_API, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ speaker:'Zed', message })
+  });
+  const data = await res.json();
+  return data.reply;
+}
+
+/* --- TTS (server first, browser fallback) --- */
 async function playServerVoice(text){
   const res = await fetch(VOICE_SERVER, {
     method:'POST', headers:{'Content-Type':'application/json'},
@@ -105,64 +137,56 @@ async function playServerVoice(text){
   if(!res.ok) throw new Error('voice server error');
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
-  try{ const audio = new Audio(url); audio.volume = 0.65; await audio.play(); }
-  finally{ URL.revokeObjectURL(url); }
+  try { const audio = new Audio(url); audio.volume = 0.6; await audio.play(); }
+  finally { URL.revokeObjectURL(url); }
 }
 function speakBrowser(text){
   if(!('speechSynthesis' in window)) return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   const vs = speechSynthesis.getVoices();
-  u.voice = vs.find(v => /en/i.test(v.lang) && /(Google|Microsoft|Samantha|Alex)/i.test(v.name)) || vs[0];
+  u.voice = vs.find(v => /en/i.test(v.lang) && /(Google|Microsoft|Samantha|Alex|Jenny|Victoria)/i.test(v.name)) || vs[0];
   u.pitch=1.1; u.rate=0.95; speechSynthesis.speak(u);
 }
 async function speak(text){
-  if(!speakOn || speakLock) return;
-  speakLock = true;
-  echoBlock = true;
-  safeStop();
-  try {
-    await playServerVoice(text);
-    ttsStatus.textContent='Voice: DangerousGem (live)';
-  } catch {
-    speakBrowser(text);
-    ttsStatus.textContent='Voice: browser (fallback)';
-  } finally {
-    speakLock = false;
-    setTimeout(() => {
-      echoBlock = false;
-      if(spaceDown) safeStart();
-    }, 1200);
-  }
+  try { await playServerVoice(text); ttsStatus.textContent='Voice: DangerousGem (live)'; }
+  catch { speakBrowser(text);        ttsStatus.textContent='Voice: browser (fallback)'; }
 }
 
+/* --- send actions --- */
 async function sendMessage(){
   const v = input.value.trim(); if(!v) return;
   addLine('Zed', v);
-  const res = await fetch(GENESIS_API, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ speaker:'Zed', message:v })
-  });
-  const data = await res.json();
-  const reply = data.reply || "…shimmer silence…";
+  const reply = await fetchReply(v);
   addLine('Amethyst', reply);
-  await speak(reply);
   input.value = '';
 }
 sendBtn.onclick = sendMessage;
 input.addEventListener('keydown', e => { if(e.key==='Enter') sendMessage(); });
 saveBtn.onclick = downloadTranscript;
 
-let rec=null, recognizing=false, spaceDown=false, abortSpin=false;
+/* --- toggle VC (auto-speak on/off) --- */
+toggleVC.onclick = () => {
+  vcMode = !vcMode;
+  toggleVC.textContent = vcMode ? 'Live Voice: On' : 'Live Voice: Off';
+};
+
+/* --- push-to-talk (Space) with echo-guard when VC is on --- */
+let rec=null, recognizing=false, spaceDown=false, abortSpin=false, echoBlock=false;
+
 function getSR(){ return window.SpeechRecognition || window.webkitSpeechRecognition; }
 function makeRecognizer(){
   const SR = getSR(); if(!SR){ sttStatus.textContent='STT: unsupported in this browser'; return null; }
   const r = new SR();
   r.continuous = true; r.interimResults = true; r.lang='en-US'; r.maxAlternatives = 1;
+
   r.onstart = ()=>{ recognizing=true; sttStatus.innerHTML='STT: <b class="pulse">listening… (hold Space)</b>'; };
-  r.onend = ()=>{ recognizing=false; sttStatus.textContent='STT: idle'; if(spaceDown && !abortSpin && !echoBlock) safeStart(); };
-  r.onerror = (e)=>{ if(e.error==='no-speech' || e.error==='aborted') { if(spaceDown) safeStart(); } else { sttStatus.textContent=`STT: ${e.error}`; } };
+  r.onend   = ()=>{ recognizing=false; sttStatus.textContent='STT: idle';
+    if(spaceDown && !abortSpin && !echoBlock) safeStart();
+  };
+  r.onerror = (e)=>{ if(e.error==='no-speech' || e.error==='aborted'){ if(spaceDown) safeStart(); }
+                     else { sttStatus.textContent=`STT: ${e.error}`; } };
+
   r.onresult = async (ev)=>{
     let final = '';
     for(let i=ev.resultIndex;i<ev.results.length;i++){
@@ -170,16 +194,18 @@ function makeRecognizer(){
     }
     if(final){
       const text = final.trim();
-      addLine('Zed (voice)', text);
-      const res = await fetch(GENESIS_API, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ speaker:'Zed', message:text })
-      });
-      const data = await res.json();
-      const reply = data.reply || "…veil hums…";
+      addLine('Zed', text);
+      const reply = await fetchReply(text);
       addLine('Amethyst', reply);
-      await speak(reply);
+      // auto voice only if VC mode is on; manual Play button always available
+      if (vcMode) {
+        echoBlock = true;         // prevent STT restart during playback
+        safeStop();
+        try { await speak(reply); }
+        finally {
+          setTimeout(()=>{ echoBlock=false; if(spaceDown) safeStart(); }, 900);
+        }
+      }
     }
   };
   return r;
@@ -204,13 +230,14 @@ window.addEventListener('keydown', e=>{
 window.addEventListener('keyup', e=>{
   if(e.code==='Space'){ e.preventDefault(); spaceDown=false; safeStop(); }
 });
+
+/* --- init --- */
 (async function init(){
   try{
     const ping = await fetch(VOICE_SERVER.replace('/speak','/health'));
     ttsStatus.textContent = ping.ok ? 'Voice: DangerousGem online' : 'Voice: error';
   }catch{ ttsStatus.textContent='Voice: offline (fallback ready)'; }
-  const recent = transcript.slice(-10);
-  recent.forEach(x => addLine(x.speaker, x.text));
+  transcript.slice(-10).forEach(x => addLine(x.speaker, x.text));
 })();
 </script>
 </body>
