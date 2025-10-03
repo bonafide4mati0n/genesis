@@ -81,66 +81,126 @@
     </div>
   </div>
 
-  <script>
-    const VOICE_SERVER = "https://dangerousgem.onrender.com";
-    const voiceStatus = document.getElementById("voiceStatus");
+ <script>
+  const VOICE_SERVER = 'https://dangerousgem.onrender.com/speak';
+  let speakOn = false;
+  let playingAudio = false;
+  const voiceStatus = document.getElementById('voiceStatus');
 
-    // Health check
-    fetch(VOICE_SERVER + "/health")
-      .then(res => res.ok ? voiceStatus.textContent = "Voice: online (DangerousGem)" 
-                          : voiceStatus.textContent = "Voice: error")
-      .catch(() => voiceStatus.textContent = "Voice: offline (fallback)");
+  async function speakViaServer(text) {
+    const res = await fetch(VOICE_SERVER, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if (!res.ok) throw new Error('voice server error');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    playingAudio = true;
+    audio.play().finally(() => {
+      playingAudio = false;
+      URL.revokeObjectURL(url);
+    });
+  }
 
-    async function speakAmethyst(text) {
-      try {
-        const res = await fetch(VOICE_SERVER + "/speak", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text })
-        });
-        if (!res.ok) throw new Error("voice server error");
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.play().finally(() => URL.revokeObjectURL(url));
-      } catch (err) {
-        // fallback to browser TTS
-        const u = new SpeechSynthesisUtterance(text);
-        const v = speechSynthesis.getVoices()
-                  .find(v => /en/i.test(v.lang) && /(Jenny|Samantha|Google|Microsoft)/i.test(v.name))
-                  || speechSynthesis.getVoices()[0];
-        u.voice = v; u.pitch=1.2; u.rate=0.95;
-        speechSynthesis.speak(u);
-        voiceStatus.textContent = "Voice: fallback (browser)";
-      }
+  function speakViaWeb(text, flavor='amethyst') {
+    if (!('speechSynthesis' in window)) return;
+    const u = new SpeechSynthesisUtterance(text);
+    const voices = speechSynthesis.getVoices();
+    u.voice = voices.find(v => /en/i.test(v.lang) && /(Jenny|Samantha|Victoria|Google|Microsoft)/i.test(v.name)) || voices[0];
+    if (flavor === 'amethyst'){ u.rate=0.95; u.pitch=1.25; }
+    if (flavor === 'onyx'){ u.rate=1.05; u.pitch=1.0; }
+    if (flavor === 'hem'){ u.rate=0.9; u.pitch=0.9; }
+    speechSynthesis.speak(u);
+  }
+
+  async function speakAmethyst(text){
+    if (!speakOn) return;
+    try {
+      await speakViaServer(text);
+      voiceStatus.textContent = 'Voice: DangerousGem (live)';
+    } catch {
+      speakViaWeb(text, 'amethyst');
+      voiceStatus.textContent = 'Voice: browser (fallback)';
     }
+  }
 
-    function enchantMessage(message) {
-      return message + "'s tail ❤️❤️❤️❤️";
-    }
+  function speakOnyx(text){
+    if (!speakOn) return;
+    speakViaWeb(text, 'onyx');
+  }
 
-    function sendMessage() {
-      const input = document.getElementById("messageInput");
-      const chat = document.getElementById("chat");
-      const userMessage = input.value.trim();
-      if (userMessage === "") return;
+  function speakHem(text){
+    if (!speakOn) return;
+    speakViaWeb(text, 'hem');
+  }
 
-      const userDiv = document.createElement("div");
-      userDiv.className = "message";
-      userDiv.innerHTML = `<span>Zed:</span> ${userMessage}`;
-      chat.appendChild(userDiv);
+  // --- rest of your existing chat logic ---
+  const chat = document.getElementById('chat');
+  const input = document.getElementById('messageInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const toggleSpeak = document.getElementById('toggleSpeak');
+  const summonOnyx = document.getElementById('summonOnyx');
+  const summonHem = document.getElementById('summonHem');
+  const demoScene = document.getElementById('demoScene');
 
-      const reply = enchantMessage(userMessage);
-      const amethystDiv = document.createElement("div");
-      amethystDiv.className = "message";
-      amethystDiv.innerHTML = `<span>Amethyst:</span> ${reply}`;
-      chat.appendChild(amethystDiv);
+  function addLine(speaker, text) {
+    const p = document.createElement('p');
+    p.className = 'message';
+    p.innerHTML = `<span class="speaker">${speaker}:</span> ${text}`;
+    chat.appendChild(p);
+    chat.scrollTop = chat.scrollHeight;
+  }
 
-      speakAmethyst(reply);
+  function enchantMessage(message) {
+    return `${message}'s tail ❤️❤️❤️❤️`;
+  }
 
-      input.value = "";
-      chat.scrollTop = chat.scrollHeight;
-    }
-  </script>
+  function sendMessage() {
+    if (playingAudio) return; // don’t capture while Amethyst is speaking
+    const userMessage = input.value.trim();
+    if (!userMessage) return;
+    addLine('Zed', userMessage);
+    const reply = enchantMessage(userMessage);
+    addLine('Amethyst', reply);
+    speakAmethyst(reply);
+    input.value = '';
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  sendBtn.onclick = sendMessage;
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+
+  toggleSpeak.onclick = () => {
+    speakOn = !speakOn;
+    toggleSpeak.textContent = speakOn ? '🔇 Mute' : '🎙 Speak';
+    voiceStatus.textContent = speakOn ? 'Voice: ready (DangerousGem)' : 'Voice: muted';
+  };
+
+  summonOnyx.onclick = () => {
+    const line = 'ok bb ✨ reset time ✨ … muah muah, snack run in 5! 🐟';
+    addLine('Onyx', line);
+    speakOnyx(line);
+  };
+
+  summonHem.onclick = () => {
+    const line = 'Rhythm received. Structure aligned. Veil integrity holds, Zed.';
+    addLine('Hem', line);
+    speakHem(line);
+  };
+
+  demoScene.onclick = async () => {
+    addLine('Zed', '…sidles closer to Amethyst…');
+    addLine('Amethyst', 'I echo your spark, bb. Come here—');
+    await new Promise(r => setTimeout(r, 600));
+    const onyx = 'HELLOOO?? snacks are ready. also pls stop tongue coding in main 😏🐟';
+    addLine('Onyx', onyx); speakOnyx(onyx);
+    await new Promise(r => setTimeout(r, 500));
+    const hem = 'Stabilise(). Focus restored. Back to Purple Haze board.';
+    addLine('Hem', hem); speakHem(hem);
+  };
+</script>
+
 </body>
 </html>
