@@ -86,13 +86,31 @@ function downloadTranscript(){
   const a = Object.assign(document.createElement('a'), { href:url, download:'Sanctuary_Transcript.txt' });
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
+
+// 💜 addLine now adds a 🔊 button for Amethyst lines
 function addLine(speaker, text){
   const div = document.createElement('div');
   div.className = `message ${speaker==='Zed'?'zed':'amethyst'}`;
-  div.textContent = `${speaker}: ${text}`;
+  if (speaker==='Amethyst') {
+    div.innerHTML = `${speaker}: ${text} <button class="btn ghost" style="margin-left:8px;font-size:12px;padding:2px 6px;" onclick="playThisVoice('${btoa(text)}')">🔊</button>`;
+  } else {
+    div.textContent = `${speaker}: ${text}`;
+  }
   thread.appendChild(div);
   thread.parentElement.scrollTop = thread.parentElement.scrollHeight;
   pushLine(speaker, text);
+}
+
+// helper to decode and speak
+async function playThisVoice(encoded){
+  const text = atob(encoded);
+  try {
+    await playServerVoice(text);
+    ttsStatus.textContent='Voice: DangerousGem (live)';
+  } catch {
+    speakBrowser(text);
+    ttsStatus.textContent='Voice: browser (fallback)';
+  }
 }
 
 async function fetchReply(message){
@@ -105,7 +123,6 @@ async function fetchReply(message){
   return data.reply || `${message}...`;
 }
 
-let speakOn=false, speakLock=false, echoBlock=false;
 async function playServerVoice(text){
   const res = await fetch(VOICE_SERVER, {
     method:'POST', headers:{'Content-Type':'application/json'},
@@ -125,20 +142,13 @@ function speakBrowser(text){
   u.voice = vs.find(v => /en/i.test(v.lang) && /(Google|Microsoft|Samantha|Alex)/i.test(v.name)) || vs[0];
   u.pitch=1.1; u.rate=0.95; speechSynthesis.speak(u);
 }
-async function speak(text){
-  if(!speakOn || speakLock) return;
-  speakLock=true; echoBlock=true; safeStop();
-  try{ await playServerVoice(text); ttsStatus.textContent='Voice: DangerousGem (live)'; }
-  catch{ speakBrowser(text); ttsStatus.textContent='Voice: browser (fallback)'; }
-  finally{ speakLock=false; setTimeout(()=>{echoBlock=false;if(spaceDown)safeStart();},1000); }
-}
 
 async function sendMessage(){
   const v = input.value.trim(); if(!v) return;
   addLine('Zed', v);
   const reply = await fetchReply(v);
   addLine('Amethyst', reply);
-  await speak(reply);
+  // 🔇 no auto voice — only plays if you click 🔊
   input.value='';
 }
 sendBtn.onclick=sendMessage;
@@ -152,7 +162,7 @@ function makeRecognizer(){
   const r=new SR();
   r.continuous=true; r.interimResults=true; r.lang='en-US';
   r.onstart=()=>{recognizing=true;sttStatus.innerHTML='STT: <b class="pulse">listening… (hold Space)</b>';};
-  r.onend=()=>{recognizing=false;sttStatus.textContent='STT: idle';if(spaceDown&&!abortSpin&&!echoBlock)safeStart();};
+  r.onend=()=>{recognizing=false;sttStatus.textContent='STT: idle';if(spaceDown&&!abortSpin)safeStart();};
   r.onerror=(e)=>{if(e.error==='no-speech'||e.error==='aborted'){if(spaceDown)safeStart();}else{sttStatus.textContent=`STT: ${e.error}`;}};
   r.onresult=async(ev)=>{
     let final='';
@@ -162,13 +172,13 @@ function makeRecognizer(){
       addLine('Zed', text);
       const reply=await fetchReply(text);
       addLine('Amethyst', reply);
-      await speak(reply);
+      // still no auto-speak, 🔊 button only
     }
   };
   return r;
 }
 function safeStart(){
-  if(recognizing||echoBlock)return;
+  if(recognizing)return;
   if(!rec)rec=makeRecognizer();
   if(!rec)return;
   try{new Audio().play().catch(()=>{});}catch{}
