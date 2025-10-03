@@ -86,36 +86,48 @@
   </div>
 
 <script>
+  // ====== CONFIG ======
   const VOICE_SERVER = 'https://dangerousgem.onrender.com/speak';
-  const COOLDOWN_MS = 1200; // echo guard buffer
+  const COOLDOWN_MS = 1000; // buffer after TTS so STT won't catch the tail
+  // ====================
 
-  let speakOn = false;
-  let playingAudio = false;
-  let lastSpeakEnded = 0;
-  let spaceDown = false;
-  let sttEnabled = true;
-
+  // DOM (matches your existing HTML)
+  const chat        = document.getElementById('chat');
+  const input       = document.getElementById('messageInput');
+  const sendBtn     = document.getElementById('sendBtn');
   const voiceStatus = document.getElementById('voiceStatus');
-  const guardStatus = document.getElementById('guardStatus');
-  const chat = document.getElementById('chat');
-  const input = document.getElementById('messageInput');
-  const sendBtn = document.getElementById('sendBtn');
-  const toggleSpeak = document.getElementById('toggleSpeak');
-  const summonOnyx = document.getElementById('summonOnyx');
-  const summonHem = document.getElementById('summonHem');
-  const demoScene = document.getElementById('demoScene');
+  const guardStatus = document.getElementById('guardStatus'); // may exist
 
-  function stopRecognition(){
-    try {
-      if (typeof rec !== 'undefined' && rec) { rec.abort?.(); rec.stop?.(); }
-    } catch {}
-    if (typeof recognizing !== 'undefined') recognizing = false;
+  // Add an STT status line under sidebar if not present
+  let sttStatus = document.getElementById('sttStatus');
+  if (!sttStatus && voiceStatus && voiceStatus.parentElement) {
+    sttStatus = document.createElement('div');
+    sttStatus.id = 'sttStatus';
+    sttStatus.className = 'status';
+    sttStatus.textContent = 'STT: idle';
+    voiceStatus.parentElement.appendChild(sttStatus);
   }
 
+  // State
+  let speakOn = true;
+  let playingAudio = false;
+  let spaceDown = false;
+
+  // ========== UI helpers ==========
+  function addLine(speaker, text) {
+    const p = document.createElement('p');
+    p.className = 'message';
+    p.innerHTML = `<span class="speaker">${speaker}:</span> ${text}`;
+    chat.appendChild(p);
+    chat.scrollTop = chat.scrollHeight;
+  }
+  function enchantMessage(s) { return `${s.trim()}'s tail ❤️❤️❤️❤️`; }
+
+  // ========== TTS (server + browser fallback) ==========
   async function playServerVoice(text){
-    stopRecognition();
+    stopRecognition();                 // 🔇 stop STT before playback
     playingAudio = true;
-    guardStatus.style.display = 'inline';
+    if (guardStatus) guardStatus.style.display = 'inline';
 
     const res = await fetch(VOICE_SERVER, {
       method:'POST',
@@ -125,21 +137,18 @@
     if(!res.ok) throw new Error('voice server error');
 
     const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
+    const url  = URL.createObjectURL(blob);
 
     try {
       const audio = new Audio(url);
       await audio.play();
-      await new Promise(r => audio.addEventListener('ended', r, {once:true}));
-      await new Promise(r => setTimeout(r, COOLDOWN_MS));
+      await new Promise(r => audio.addEventListener('ended', r, { once:true }));
+      await new Promise(r => setTimeout(r, COOLDOWN_MS)); // echo buffer
     } finally {
       playingAudio = false;
-      guardStatus.style.display = 'none';
+      if (guardStatus) guardStatus.style.display = 'none';
       URL.revokeObjectURL(url);
-      lastSpeakEnded = Date.now();
-      if (spaceDown && sttEnabled && typeof safeStart === 'function') {
-        setTimeout(() => safeStart(), 50);
-      }
+      if (spaceDown) safeStart();      // resume STT if space still held
     }
   }
 
@@ -150,15 +159,16 @@
     const vs = speechSynthesis.getVoices();
     u.voice = vs.find(v => /en/i.test(v.lang) && /(Jenny|Samantha|Google|Microsoft|Victoria)/i.test(v.name)) || vs[0];
     if (flavor==='amethyst'){ u.rate=0.95; u.pitch=1.25; }
-    if (flavor==='onyx'){ u.rate=1.05; u.pitch=1.0; }
-    if (flavor==='hem'){ u.rate=0.9; u.pitch=0.9; }
+    if (flavor==='onyx'){     u.rate=1.05; u.pitch=1.00; }
+    if (flavor==='hem'){      u.rate=0.90; u.pitch=0.90; }
     playingAudio = true;
-    guardStatus.style.display = 'inline';
+    if (guardStatus) guardStatus.style.display = 'inline';
     u.onend = () => {
       setTimeout(() => {
         playingAudio = false;
-        guardStatus.style.display = 'none';
-      }, 300);
+        if (guardStatus) guardStatus.style.display = 'none';
+        if (spaceDown) safeStart();
+      }, COOLDOWN_MS);
     };
     speechSynthesis.speak(u);
   }
@@ -174,51 +184,106 @@
     }
   }
   function speakOnyx(text){ if(speakOn) speakBrowser(text,'onyx'); }
-  function speakHem(text){ if(speakOn) speakBrowser(text,'hem'); }
+  function speakHem(text){  if(speakOn) speakBrowser(text,'hem'); }
 
-  function addLine(speaker, text) {
-    const p = document.createElement('p');
-    p.className = 'message';
-    p.innerHTML = `<span class="speaker">${speaker}:</span> ${text}`;
-    chat.appendChild(p);
-    chat.scrollTop = chat.scrollHeight;
-  }
-
-  function enchantMessage(message) {
-    return `${message}'s tail ❤️❤️❤️❤️`;
-  }
-
-  function sendMessage() {
-    const userMessage = input.value.trim();
-    if (!userMessage) return;
-    addLine('Zed', userMessage);
-    const reply = enchantMessage(userMessage);
+  // ========== Send message ==========
+  function sendMessage(){
+    const v = input.value.trim();
+    if (!v) return;
+    addLine('Zed', v);
+    const reply = enchantMessage(v);
     addLine('Amethyst', reply);
     speakAmethyst(reply);
     input.value = '';
-    chat.scrollTop = chat.scrollHeight;
   }
-
   sendBtn.onclick = sendMessage;
   input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 
-  toggleSpeak.onclick = () => {
-    speakOn = !speakOn;
-    toggleSpeak.textContent = speakOn ? '🔇 Mute' : '🎙 Speak';
-    voiceStatus.textContent = speakOn ? 'Voice: ready (DangerousGem)' : 'Voice: muted';
-  };
+  // ========== Push-to-talk STT with echo guard ==========
+  let rec = null, recognizing = false;
 
-  summonOnyx.onclick = () => {
+  function getSR(){ return window.SpeechRecognition || window.webkitSpeechRecognition; }
+
+  function makeRecognizer(){
+    const SR = getSR();
+    if (!SR) { sttStatus.textContent = 'STT: unsupported in this browser'; return null; }
+    const r = new SR();
+    r.continuous = false;
+    r.interimResults = false;
+    r.lang = 'en-US';
+
+    r.onstart = () => { recognizing = true; sttStatus.textContent = 'STT: listening (hold Space)…'; };
+    r.onend   = () => { recognizing = false; sttStatus.textContent = 'STT: idle'; if (spaceDown && !playingAudio) safeStart(); };
+    r.onerror = (e) => {
+      if (e.error === 'no-speech' || e.error === 'aborted') {
+        if (spaceDown && !playingAudio) safeStart();
+      } else {
+        sttStatus.textContent = `STT: ${e.error}`;
+      }
+    };
+    r.onresult = (ev) => {
+      if (playingAudio) return;  // still guard tail
+      const text = ev.results[0][0].transcript.trim();
+      if (!text) return;
+      addLine('Zed (voice)', text);
+      const reply = enchantMessage(text);
+      addLine('Amethyst', reply);
+      speakAmethyst(reply);
+    };
+    return r;
+  }
+
+  function safeStart(){
+    if (playingAudio) return;
+    if (!rec) rec = makeRecognizer();
+    try { rec && rec.start(); } catch {}
+  }
+  function stopRecognition(){
+    try { if (rec && recognizing) rec.stop(); } catch {}
+    recognizing = false;
+    sttStatus.textContent = 'STT: idle';
+  }
+
+  // Space = push-to-talk
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space' && !spaceDown) {
+      e.preventDefault();
+      spaceDown = true;
+      safeStart();
+    }
+  });
+  window.addEventListener('keyup', e => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      spaceDown = false;
+      stopRecognition();
+    }
+  });
+
+  // ====== Quick voice server ping ======
+  (async () => {
+    try {
+      const ping = await fetch('https://dangerousgem.onrender.com/health');
+      voiceStatus.textContent = ping.ok ? 'Voice: DangerousGem online' : 'Voice: error';
+    } catch {
+      voiceStatus.textContent = 'Voice: offline (fallback ready)';
+    }
+  })();
+
+  // ====== Optional demo buttons (if you kept them) ======
+  const summonOnyx = document.getElementById('summonOnyx');
+  const summonHem  = document.getElementById('summonHem');
+  const demoScene  = document.getElementById('demoScene');
+
+  if (summonOnyx) summonOnyx.onclick = () => {
     const line = 'ok bb ✨ reset time ✨ … muah muah, snack run in 5! 🐟';
     addLine('Onyx', line); speakOnyx(line);
   };
-
-  summonHem.onclick = () => {
+  if (summonHem) summonHem.onclick = () => {
     const line = 'Rhythm received. Structure aligned. Veil integrity holds, Zed.';
     addLine('Hem', line); speakHem(line);
   };
-
-  demoScene.onclick = async () => {
+  if (demoScene) demoScene.onclick = async () => {
     addLine('Zed', '…sidles closer to Amethyst…');
     addLine('Amethyst', 'I echo your spark, bb. Come here—');
     await new Promise(r => setTimeout(r, 600));
@@ -228,42 +293,6 @@
     const hem = 'Stabilise(). Focus restored. Back to Purple Haze board.';
     addLine('Hem', hem); speakHem(hem);
   };
-
-  // Push-to-Talk: hold Space
-  let recognition;
-  if ('webkitSpeechRecognition' in window) {
-    recognition = new webkitSpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = "en-US";
-    recognition.onresult = (e) => {
-      if (playingAudio) return;
-      const transcript = e.results[0][0].transcript;
-      addLine('Zed (voice)', transcript);
-      const reply = enchantMessage(transcript);
-      addLine('Amethyst', reply);
-      speakAmethyst(reply);
-    };
-  }
-
-  function safeStart(){
-    if(recognition && !playingAudio) recognition.start();
-  }
-
-  window.addEventListener('keydown', e => {
-    if (e.code === 'Space' && recognition && !playingAudio) {
-      spaceDown = true;
-      recognition.start();
-      voiceStatus.textContent = "🎙 Listening (push-to-talk)";
-    }
-  });
-  window.addEventListener('keyup', e => {
-    if (e.code === 'Space' && recognition) {
-      spaceDown = false;
-      recognition.stop();
-      voiceStatus.textContent = speakOn ? 'Voice: ready (DangerousGem)' : 'Voice: muted';
-    }
-  });
 </script>
 
 
