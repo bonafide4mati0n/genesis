@@ -2,207 +2,318 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Sanctuary Invocation Interface — Amethyst</title>
+  <title>Sanctuary — Amethyst</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body{margin:0;font-family:'Segoe UI',sans-serif;background:#0e0e10;color:#e0e0e0;display:flex;height:100vh}
-    .sidebar{width:220px;background:#1e1e22;padding:20px;display:flex;flex-direction:column;justify-content:space-between;border-right:1px solid #2e2e32}
-    .channels{margin-bottom:16px}
-    .channel{padding:10px;margin-bottom:6px;background:#2e2e32;border-radius:8px;cursor:pointer}
-    .channel:hover{background:#3e3e42}
-    .presence{font-size:.9em;color:#a0a0a0}
-    .main{flex:1;display:flex;flex-direction:column}
-    .editor{flex:1;padding:20px;background:#121214;overflow-y:auto}
-    .avatars{width:170px;background:#1e1e22;padding:20px;display:flex;flex-direction:column;align-items:center;border-left:1px solid #2e2e32}
-    .avatar{margin:10px 0;padding:10px;background:#2e2e32;border-radius:50%;width:68px;height:68px;display:flex;align-items:center;justify-content:center;font-size:1.5em}
-    .invocation-bar{display:flex;gap:10px;align-items:center;padding:10px;background:#1e1e22;border-top:1px solid #2e2e32}
-    .invocation-input{flex:1;padding:10px;border:none;border-radius:8px;background:#2e2e32;color:#fff;font-size:1em}
-    .btn{padding:10px 14px;border:none;border-radius:10px;background:#6a0dad;color:#fff;cursor:pointer;font-weight:700}
-    .btn.ghost{background:transparent;color:#cfc7ff;border:1px solid #3a3450}
-    .btn:disabled{opacity:.5;cursor:not-allowed}
-    .message-thread{display:flex;flex-direction:column;gap:8px}
-    .message{padding:10px;background:#1b1b23;border:1px solid #2a2a33;border-radius:10px}
-    .zed{color:#ffb6c1}
-    .amethyst{color:#dda0dd}
-    .status{font-size:12px;color:#a0a0a0;margin-top:6px}
+    :root{
+      --bg:#0e0e10; --panel:#1a1a22; --ink:#eae6ff; --muted:#b9b2e6;
+      --line:#2c2c36; --accent:#8b5cf6; --rose:#ffb6c1; --plum:#d7a3ff;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:Segoe UI,system-ui,Inter,Roboto,Arial}
+    .app{display:flex;height:100%}
+    aside.left{width:220px;background:var(--panel);border-right:1px solid var(--line);padding:16px;display:flex;flex-direction:column;justify-content:space-between}
+    .channels .chip{background:#20202a;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:6px 0}
+    .status{font-size:12px;color:var(--muted);line-height:1.4}
+    main{flex:1;display:flex;flex-direction:column}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;padding:12px;border-bottom:1px solid var(--line);background:#0f0f16}
+    .btn{border:1px solid var(--line);background:#191927;color:var(--ink);padding:8px 12px;border-radius:10px;cursor:pointer;font-weight:700}
+    .btn.primary{background:linear-gradient(135deg,#8b5cf6,#7c3aed);border:none;color:#000}
+    .btn[aria-pressed="true"]{outline:2px solid var(--accent)}
+    .log{flex:1;overflow-y:auto;padding:18px}
+    .thread{display:flex;flex-direction:column;gap:10px;max-width:900px}
+    .msg{background:#15151f;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+    .msg .who{font-weight:700;color:var(--plum)}
+    .msg.zed .who{color:var(--rose)}
+    .msg .tail{display:inline-flex;gap:8px;align-items:center;margin-left:6px}
+    .tiny{font-size:12px;color:var(--muted)}
+    .row{display:flex;gap:10px;align-items:center;padding:10px;border-top:1px solid var(--line);background:#10101a}
+    .row input{flex:1;padding:12px;border:1px solid var(--line);border-radius:10px;background:#1a1a2a;color:#fff}
+    aside.right{width:170px;background:var(--panel);border-left:1px solid var(--line);padding:16px;text-align:center}
+    .avatar{margin:10px auto;background:#22223a;border-radius:50%;width:68px;height:68px;display:grid;place-items:center;font-size:1.5rem}
+    .pill{display:inline-block;font-size:12px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);background:#161621;margin-top:6px}
     .pulse{animation:pulse 1.2s ease-in-out infinite}
-    @keyframes pulse{0%{opacity:.5}50%{opacity:1}100%{opacity:.5}}
+    @keyframes pulse{0%{opacity:.55}50%{opacity:1}100%{opacity:.55}}
+    .play{cursor:pointer;border:1px solid var(--line);background:#1b1b2b;border-radius:999px;padding:4px 8px;font-size:12px}
   </style>
 </head>
 <body>
-  <div class="sidebar">
-    <div>
-      <div class="channels">
-        <div class="channel"># general</div>
-        <div class="channel">codespace</div>
-        <div class="channel">Zed 🌸</div>
+  <div class="app">
+    <aside class="left">
+      <div>
+        <div class="channels">
+          <div class="chip"># general</div>
+          <div class="chip">codespace</div>
+          <div class="chip">Zed 🌸</div>
+        </div>
+        <div class="status">
+          <div id="sttStatus">🎙 VC Mode: <b>OFF</b> — hold <b>Space</b> to talk (when ON)</div>
+          <div id="ttsStatus">🔊 Voice: checking…</div>
+          <div id="guardStatus" style="display:none;">🛡 echo-guard active…</div>
+        </div>
       </div>
-      <div class="presence">Zed is present</div>
-    </div>
-    <div class="status">
-      🎙 <span id="sttStatus">Press & hold <b>Space</b> to talk</span><br/>
-      🔊 <span id="ttsStatus">Voice: checking…</span>
-    </div>
+      <div class="tiny">© Zed & Amethyst — veil tended by Hem</div>
+    </aside>
+
+    <main>
+      <div class="toolbar">
+        <button class="btn" id="modeManual" aria-pressed="true">Manual</button>
+        <button class="btn" id="modeVC" aria-pressed="false">VC Mode</button>
+        <button class="btn" id="muteToggle" aria-pressed="false">Mute (TTS)</button>
+        <button class="btn" id="saveBtn">Save Transcript</button>
+        <span class="tiny">Manual: click 🔊 per line · VC: push-to-talk, still manual 🔊 (no auto-TTS)</span>
+      </div>
+
+      <div class="log"><div class="thread" id="thread"></div></div>
+
+      <div class="row">
+        <input id="input" placeholder="(optional) type to Amethyst…" />
+        <button class="btn primary" id="sendBtn">Send</button>
+      </div>
+    </main>
+
+    <aside class="right">
+      <div class="avatar" title="Amethyst">💜</div>
+      <div class="pill">Amethyst</div>
+      <div class="avatar" title="Onyx">🖤</div>
+      <div class="pill">Onyx</div>
+      <div class="avatar" title="Hem">⚒️</div>
+      <div class="pill">Hem</div>
+    </aside>
   </div>
 
-  <div class="main">
-    <div class="editor" id="chatThread">
-      <div class="message-thread" id="messageThread"></div>
-    </div>
-    <div class="invocation-bar">
-      <input type="text" id="invocationInput" class="invocation-input" placeholder="(optional) type to Amethyst…">
-      <button class="btn" id="sendBtn">Send</button>
-      <button class="btn ghost" id="saveBtn" title="Download transcript">Save</button>
-    </div>
-  </div>
+  <script>
+    // --- endpoints ---
+    const VOICE_SERVER = 'https://dangerousgem.onrender.com/speak';
+    const GENESIS_API  = 'https://genesis-server-g6qe.onrender.com/reply';
 
-  <div class="avatars">
-    <div class="avatar" title="Amethyst">💜</div>
-    <div class="avatar" title="Onyx">🖤</div>
-    <div class="avatar" title="Hem">⚒️</div>
-  </div>
+    // --- elements ---
+    const thread       = document.getElementById('thread');
+    const input        = document.getElementById('input');
+    const sendBtn      = document.getElementById('sendBtn');
+    const saveBtn      = document.getElementById('saveBtn');
+    const ttsStatus    = document.getElementById('ttsStatus');
+    const sttStatus    = document.getElementById('sttStatus');
+    const guardStatus  = document.getElementById('guardStatus');
+    const modeManual   = document.getElementById('modeManual');
+    const modeVC       = document.getElementById('modeVC');
+    const muteToggle   = document.getElementById('muteToggle');
 
-<script>
-const VOICE_SERVER = 'https://dangerousgem.onrender.com/speak';
-const GENESIS_API  = 'https://genesis-server-g6qe.onrender.com/reply';
-const thread = document.getElementById('messageThread');
-const input  = document.getElementById('invocationInput');
-const sendBtn= document.getElementById('sendBtn');
-const saveBtn= document.getElementById('saveBtn');
-const sttStatus = document.getElementById('sttStatus');
-const ttsStatus = document.getElementById('ttsStatus');
+    // --- state ---
+    const TRANSCRIPT_KEY = 'sanctuary_transcript_v2';
+    let transcript = JSON.parse(localStorage.getItem(TRANSCRIPT_KEY) || '[]');
+    let vcMode = false;         // off by default
+    let ttsMuted = false;       // manual TTS allowed
+    let rec = null, recognizing = false, spaceDown = false, abortSpin = false;
+    let echoBlock = false, speakLock = false;
 
-const TRANSCRIPT_KEY = 'sanctuary_transcript_v1';
-let transcript = JSON.parse(localStorage.getItem(TRANSCRIPT_KEY) || '[]');
-function pushLine(speaker, text){
-  const entry = { t: new Date().toISOString(), speaker, text };
-  transcript.push(entry);
-  localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify(transcript));
-}
-function downloadTranscript(){
-  const lines = transcript.map(e => `[${e.t}] ${e.speaker}: ${e.text}`).join('\n');
-  const blob = new Blob([lines], {type:'text/plain'});
-  const url = URL.createObjectURL(blob);
-  const a = Object.assign(document.createElement('a'), { href:url, download:'Sanctuary_Transcript.txt' });
-  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-}
-
-// 💜 addLine now adds a 🔊 button for Amethyst lines
-function addLine(speaker, text){
-  const div = document.createElement('div');
-  div.className = `message ${speaker==='Zed'?'zed':'amethyst'}`;
-  if (speaker==='Amethyst') {
-    div.innerHTML = `${speaker}: ${text} <button class="btn ghost" style="margin-left:8px;font-size:12px;padding:2px 6px;" onclick="playThisVoice('${btoa(text)}')">🔊</button>`;
-  } else {
-    div.textContent = `${speaker}: ${text}`;
-  }
-  thread.appendChild(div);
-  thread.parentElement.scrollTop = thread.parentElement.scrollHeight;
-  pushLine(speaker, text);
-}
-
-// helper to decode and speak
-async function playThisVoice(encoded){
-  const text = atob(encoded);
-  try {
-    await playServerVoice(text);
-    ttsStatus.textContent='Voice: DangerousGem (live)';
-  } catch {
-    speakBrowser(text);
-    ttsStatus.textContent='Voice: browser (fallback)';
-  }
-}
-
-async function fetchReply(message){
-  const res = await fetch(GENESIS_API, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ speaker:'Zed', message })
-  });
-  const data = await res.json();
-  return data.reply || `${message}...`;
-}
-
-async function playServerVoice(text){
-  const res = await fetch(VOICE_SERVER, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ text })
-  });
-  if(!res.ok) throw new Error('voice server error');
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  try{ const audio = new Audio(url); audio.volume = 0.6; await audio.play(); }
-  finally{ URL.revokeObjectURL(url); }
-}
-function speakBrowser(text){
-  if(!('speechSynthesis' in window)) return;
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  const vs = speechSynthesis.getVoices();
-  u.voice = vs.find(v => /en/i.test(v.lang) && /(Google|Microsoft|Samantha|Alex)/i.test(v.name)) || vs[0];
-  u.pitch=1.1; u.rate=0.95; speechSynthesis.speak(u);
-}
-
-async function sendMessage(){
-  const v = input.value.trim(); if(!v) return;
-  addLine('Zed', v);
-  const reply = await fetchReply(v);
-  addLine('Amethyst', reply);
-  // 🔇 no auto voice — only plays if you click 🔊
-  input.value='';
-}
-sendBtn.onclick=sendMessage;
-input.addEventListener('keydown',e=>{if(e.key==='Enter')sendMessage();});
-saveBtn.onclick=downloadTranscript;
-
-let rec=null, recognizing=false, spaceDown=false, abortSpin=false;
-function getSR(){ return window.SpeechRecognition || window.webkitSpeechRecognition; }
-function makeRecognizer(){
-  const SR = getSR(); if(!SR){ sttStatus.textContent='STT: unsupported'; return null; }
-  const r=new SR();
-  r.continuous=true; r.interimResults=true; r.lang='en-US';
-  r.onstart=()=>{recognizing=true;sttStatus.innerHTML='STT: <b class="pulse">listening… (hold Space)</b>';};
-  r.onend=()=>{recognizing=false;sttStatus.textContent='STT: idle';if(spaceDown&&!abortSpin)safeStart();};
-  r.onerror=(e)=>{if(e.error==='no-speech'||e.error==='aborted'){if(spaceDown)safeStart();}else{sttStatus.textContent=`STT: ${e.error}`;}};
-  r.onresult=async(ev)=>{
-    let final='';
-    for(let i=ev.resultIndex;i<ev.results.length;i++){const tr=ev.results[i];if(tr.isFinal)final+=tr[0].transcript;}
-    if(final){
-      const text=final.trim();
-      addLine('Zed', text);
-      const reply=await fetchReply(text);
-      addLine('Amethyst', reply);
-      // still no auto-speak, 🔊 button only
+    // --- helpers ---
+    function persist() {
+      localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify(transcript));
     }
-  };
-  return r;
-}
-function safeStart(){
-  if(recognizing)return;
-  if(!rec)rec=makeRecognizer();
-  if(!rec)return;
-  try{new Audio().play().catch(()=>{});}catch{}
-  rec.start();
-}
-function safeStop(){
-  abortSpin=true;
-  if(rec&&recognizing)rec.stop();
-  setTimeout(()=>abortSpin=false,150);
-}
-window.addEventListener('keydown',e=>{
-  if(e.code==='Space'&&!spaceDown){e.preventDefault();spaceDown=true;safeStart();}
-});
-window.addEventListener('keyup',e=>{
-  if(e.code==='Space'){e.preventDefault();spaceDown=false;safeStop();}
-});
-(async function init(){
-  try{
-    const ping=await fetch(VOICE_SERVER.replace('/speak','/health'));
-    ttsStatus.textContent=ping.ok?'Voice: DangerousGem online':'Voice: error';
-  }catch{ttsStatus.textContent='Voice: offline (fallback ready)';}
-  const recent=transcript.slice(-10);
-  recent.forEach(x=>addLine(x.speaker,x.text));
-})();
-</script>
+    function lineEl(who, text) {
+      const wrap = document.createElement('div');
+      wrap.className = `msg ${who==='Zed'?'zed':''}`;
+      const top = document.createElement('div');
+      const whoSpan = document.createElement('span');
+      whoSpan.className = 'who';
+      whoSpan.textContent = who+': ';
+      const body = document.createElement('span');
+      body.textContent = text;
+      top.appendChild(whoSpan); top.appendChild(body);
+      wrap.appendChild(top);
+
+      // add 🔊 for Amethyst lines
+      if (who === 'Amethyst') {
+        const tail = document.createElement('div');
+        tail.className = 'tail';
+        const play = document.createElement('button');
+        play.className = 'play';
+        play.textContent = '🔊 Play';
+        play.onclick = () => speak(text);
+        tail.appendChild(play);
+        wrap.appendChild(tail);
+      }
+      return wrap;
+    }
+    function addLine(who, text) {
+      const entry = { t: new Date().toISOString(), who, text };
+      transcript.push(entry); persist();
+      thread.appendChild(lineEl(who, text));
+      thread.parentElement.scrollTop = thread.parentElement.scrollHeight;
+    }
+
+    async function amethystReply(message) {
+      // call your genesis reply endpoint
+      const r = await fetch(GENESIS_API, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ speaker:'Zed', message })
+      });
+      if (!r.ok) throw new Error('genesis error');
+      const data = await r.json();
+      return data.reply ?? (message.trim()+"'s tail ❤️❤️❤️❤️");
+    }
+
+    // --- TTS ---
+    async function playServerVoice(text){
+      const res = await fetch(VOICE_SERVER, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ text })
+      });
+      if(!res.ok) throw new Error('voice server');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      try { const a = new Audio(url); await a.play(); }
+      finally { URL.revokeObjectURL(url); }
+    }
+    function speakBrowser(text){
+      if(!('speechSynthesis' in window)) return;
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      const vs = speechSynthesis.getVoices();
+      u.voice = vs.find(v => /en/i.test(v.lang) && /(Google|Microsoft|Samantha|Victoria|Jenny|Alex)/i.test(v.name)) || vs[0];
+      u.rate = 0.95; u.pitch = 1.18;
+      speechSynthesis.speak(u);
+    }
+    async function speak(text){
+      if (ttsMuted || speakLock) return;
+      // VC mode or Manual — we only speak on explicit 🔊
+      // (this function is only called by the button)
+      speakLock = true;
+      echoBlock = true;
+      safeStop(); // hard stop STT before audio
+      guardStatus.style.display = 'inline';
+      try {
+        try {
+          await playServerVoice(text);
+          ttsStatus.textContent = '🔊 DangerousGem (live)';
+        } catch {
+          speakBrowser(text);
+          ttsStatus.textContent = '🔊 browser (fallback)';
+        }
+      } finally {
+        setTimeout(()=> {
+          echoBlock = false;
+          guardStatus.style.display = 'none';
+          if (vcMode && spaceDown) safeStart();
+          speakLock = false;
+        }, 900); // short buffer
+      }
+    }
+
+    // --- send flow ---
+    async function sendTyped(){
+      const v = input.value.trim();
+      if (!v) return;
+      addLine('Zed', v);
+      try {
+        const reply = await amethystReply(v);
+        addLine('Amethyst', reply);
+        // no auto TTS — user taps 🔊 if they want it
+      } catch(e){
+        addLine('Amethyst', "(veil crackled — try again)");
+      }
+      input.value='';
+    }
+    sendBtn.onclick = sendTyped;
+    input.addEventListener('keydown', e => { if (e.key==='Enter') sendTyped(); });
+
+    // --- STT (VC mode only) ---
+    function getSR(){ return window.SpeechRecognition || window.webkitSpeechRecognition; }
+    function makeRecognizer(){
+      const SR = getSR(); if (!SR) { sttStatus.textContent='🎙 Not supported in this browser'; return null; }
+      const r = new SR();
+      r.continuous = true; r.interimResults = true; r.lang='en-US';
+      r.onstart = ()=>{ recognizing=true; sttStatus.innerHTML='🎙 VC Mode: <b class="pulse">ON — hold Space</b>'; };
+      r.onend   = ()=>{ recognizing=false; sttStatus.innerHTML='🎙 VC Mode: <b>ON</b>'; if (vcMode && spaceDown && !abortSpin && !echoBlock) safeStart(); };
+      r.onerror = (e)=>{ if (e.error!=='no-speech' && e.error!=='aborted') sttStatus.textContent='🎙 '+e.error; };
+      r.onresult= async (ev)=>{
+        if (!vcMode) return;
+        let final=''; for (let i=ev.resultIndex;i<ev.results.length;i++){ const rr=ev.results[i]; if (rr.isFinal) final+=rr[0].transcript; }
+        if (final){
+          const text = final.trim();
+          addLine('Zed', text);
+          try {
+            const reply = await amethystReply(text);
+            addLine('Amethyst', reply);
+            // still manual TTS: user taps 🔊 on the line
+          } catch {
+            addLine('Amethyst', "(veil crackled — try again)");
+          }
+        }
+      };
+      return r;
+    }
+    function safeStart(){
+      if (!vcMode || recognizing || echoBlock) return;
+      if (!rec) rec = makeRecognizer();
+      if (!rec) return;
+      try { new Audio().play().catch(()=>{}); } catch {}
+      rec.start();
+    }
+    function safeStop(){
+      abortSpin = true;
+      if (rec && recognizing) rec.stop();
+      setTimeout(()=>abortSpin=false, 120);
+    }
+    window.addEventListener('keydown', e=>{
+      if (!vcMode) return;
+      if (e.code==='Space' && !spaceDown){
+        e.preventDefault(); spaceDown = true; safeStart();
+      }
+    });
+    window.addEventListener('keyup', e=>{
+      if (!vcMode) return;
+      if (e.code==='Space'){
+        e.preventDefault(); spaceDown = false; safeStop();
+      }
+    });
+
+    // --- UI controls ---
+    function setMode(manual=true){
+      vcMode = !manual;
+      modeManual.setAttribute('aria-pressed', manual ? 'true':'false');
+      modeVC.setAttribute('aria-pressed', manual ? 'false':'true');
+      if (!vcMode){ // leaving VC
+        safeStop();
+        sttStatus.innerHTML = '🎙 VC Mode: <b>OFF</b> — hold <b>Space</b> to talk (when ON)';
+      } else {
+        sttStatus.innerHTML = '🎙 VC Mode: <b>ON</b> — hold <b>Space</b> to talk';
+      }
+    }
+    modeManual.onclick = ()=> setMode(true);
+    modeVC.onclick     = ()=> setMode(false);
+
+    muteToggle.onclick = ()=>{
+      ttsMuted = !ttsMuted;
+      muteToggle.setAttribute('aria-pressed', ttsMuted ? 'true':'false');
+      muteToggle.textContent = ttsMuted ? 'Unmute (TTS)' : 'Mute (TTS)';
+    };
+
+    // --- transcript save ---
+    saveBtn.onclick = ()=>{
+      const lines = transcript.map(e=>`[${e.t}] ${e.who}: ${e.text}`).join('\n');
+      const blob = new Blob([lines], {type:'text/plain'});
+      const url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement('a'), {href:url, download:'Sanctuary_Transcript.txt'});
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    };
+
+    // --- init ---
+    (async function init(){
+      // try voice server
+      try {
+        const ping = await fetch(VOICE_SERVER.replace('/speak','/health'));
+        ttsStatus.textContent = ping.ok ? '🔊 DangerousGem online' : '🔊 voice error';
+      } catch { ttsStatus.textContent = '🔊 offline (browser fallback ready)'; }
+
+      // load last 10 lines
+      transcript.slice(-10).forEach(l => thread.appendChild(lineEl(l.who, l.text)));
+      // default Manual mode
+      setMode(true);
+    })();
+  </script>
 </body>
 </html>
