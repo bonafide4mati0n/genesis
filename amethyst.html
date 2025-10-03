@@ -87,99 +87,32 @@
 
 <script>
   const VOICE_SERVER = 'https://dangerousgem.onrender.com/speak';
-  const COOLDOWN_MS = 1200;
+  const COOLDOWN_MS = 1200; // echo guard buffer
 
-  let speakOn = true;
+  let speakOn = false;
   let playingAudio = false;
-  let lastAmethystReply = '';
-  let sttEnabled = true;
-  let spaceDown = false;
-  let recognizing = false;
-  let rec = null;
-  let micStream = null;
   let lastSpeakEnded = 0;
+  let spaceDown = false;
+  let sttEnabled = true;
 
-  const voiceStatus = document.getElementById('voiceStatus') || {textContent:''};
-  const guardStatus = document.getElementById('guardStatus') || {style:{display:'none'}};
+  const voiceStatus = document.getElementById('voiceStatus');
+  const guardStatus = document.getElementById('guardStatus');
   const chat = document.getElementById('chat');
   const input = document.getElementById('messageInput');
   const sendBtn = document.getElementById('sendBtn');
+  const toggleSpeak = document.getElementById('toggleSpeak');
+  const summonOnyx = document.getElementById('summonOnyx');
+  const summonHem = document.getElementById('summonHem');
+  const demoScene = document.getElementById('demoScene');
 
-  function addLine(speaker, text) {
-    const p = document.createElement('p');
-    p.className = 'message';
-    p.innerHTML = `<span class="speaker">${speaker}:</span> ${text}`;
-    chat.appendChild(p);
-    chat.scrollTop = chat.scrollHeight;
+  function stopRecognition(){
+    try {
+      if (typeof rec !== 'undefined' && rec) { rec.abort?.(); rec.stop?.(); }
+    } catch {}
+    if (typeof recognizing !== 'undefined') recognizing = false;
   }
 
-  function enchantMessage(message) {
-    return `${message}'s tail ❤️❤️❤️❤️`;
-  }
-
-  async function ensureMic() {
-    if (micStream) return micStream;
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }
-    });
-    return micStream;
-  }
-  function stopMicTrack() {
-    if (micStream) {
-      const t = micStream.getAudioTracks()[0];
-      if (t && t.readyState === 'live') t.stop();
-      micStream = null;
-    }
-  }
-
-  function createRec() {
-    if (!('webkitSpeechRecognition' in window)) return null;
-    const r = new webkitSpeechRecognition();
-    r.lang = 'en-US'; r.continuous = false; r.interimResults = false;
-
-    r.onstart = () => { recognizing = true; voiceStatus.textContent = '🎙 Listening (PTT)'; };
-    r.onend   = () => { recognizing = false; voiceStatus.textContent = speakOn ? 'Voice: ready' : 'Voice: muted'; };
-
-    r.onresult = (e) => {
-      if (playingAudio) return;
-      if (Date.now() - lastSpeakEnded < COOLDOWN_MS) return;
-      const transcript = (e.results?.[0]?.[0]?.transcript || '').trim();
-      const confidence = (e.results?.[0]?.[0]?.confidence ?? 1);
-      if (!transcript || confidence < 0.55) return;
-      if (
-        transcript === lastAmethystReply ||
-        transcript.endsWith("'s tail ❤️❤️❤️❤️") ||
-        transcript === lastAmethystReply.replace(/'s tail ❤️❤️❤️❤️$/,'')
-      ) return;
-
-      addLine('Zed (voice)', transcript);
-      const reply = enchantMessage(transcript);
-      lastAmethystReply = reply;
-      addLine('Amethyst', reply);
-      speakAmethyst(reply);
-    };
-    return r;
-  }
-
-  function stopRecognition() {
-    try { if (rec && recognizing) { rec.abort?.(); rec.stop?.(); } } catch {}
-    recognizing = false;
-    stopMicTrack();
-  }
-
-  async function safeStart() {
-    if (!sttEnabled || playingAudio) return;
-    if (Date.now() - lastSpeakEnded < COOLDOWN_MS) {
-      setTimeout(() => { if (spaceDown) safeStart(); }, COOLDOWN_MS);
-      return;
-    }
-    if (!rec) rec = createRec();
-    if (!rec) return;
-    await ensureMic();
-    try { rec.start(); } catch {}
-  }
-
-  async function playServerVoice(text) {
+  async function playServerVoice(text){
     stopRecognition();
     playingAudio = true;
     guardStatus.style.display = 'inline';
@@ -189,7 +122,8 @@
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ text })
     });
-    if (!res.ok) throw new Error('voice server error');
+    if(!res.ok) throw new Error('voice server error');
+
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
 
@@ -203,73 +137,135 @@
       guardStatus.style.display = 'none';
       URL.revokeObjectURL(url);
       lastSpeakEnded = Date.now();
-      if (spaceDown && sttEnabled) safeStart();
+      if (spaceDown && sttEnabled && typeof safeStart === 'function') {
+        setTimeout(() => safeStart(), 50);
+      }
     }
   }
 
-  function speakBrowser(text) {
-    stopRecognition();
+  function speakBrowser(text, flavor='amethyst'){
+    if (!('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     const vs = speechSynthesis.getVoices();
     u.voice = vs.find(v => /en/i.test(v.lang) && /(Jenny|Samantha|Google|Microsoft|Victoria)/i.test(v.name)) || vs[0];
-    u.rate = 0.95; u.pitch = 1.25;
+    if (flavor==='amethyst'){ u.rate=0.95; u.pitch=1.25; }
+    if (flavor==='onyx'){ u.rate=1.05; u.pitch=1.0; }
+    if (flavor==='hem'){ u.rate=0.9; u.pitch=0.9; }
     playingAudio = true;
     guardStatus.style.display = 'inline';
     u.onend = () => {
       setTimeout(() => {
         playingAudio = false;
         guardStatus.style.display = 'none';
-        lastSpeakEnded = Date.now();
-        if (spaceDown && sttEnabled) safeStart();
-      }, COOLDOWN_MS);
+      }, 300);
     };
     speechSynthesis.speak(u);
   }
 
-  async function speakAmethyst(text) {
+  async function speakAmethyst(text){
     if (!speakOn) return;
     try {
       await playServerVoice(text);
       voiceStatus.textContent = 'Voice: DangerousGem (live)';
     } catch {
-      speakBrowser(text);
+      speakBrowser(text, 'amethyst');
       voiceStatus.textContent = 'Voice: browser (fallback)';
     }
   }
+  function speakOnyx(text){ if(speakOn) speakBrowser(text,'onyx'); }
+  function speakHem(text){ if(speakOn) speakBrowser(text,'hem'); }
+
+  function addLine(speaker, text) {
+    const p = document.createElement('p');
+    p.className = 'message';
+    p.innerHTML = `<span class="speaker">${speaker}:</span> ${text}`;
+    chat.appendChild(p);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  function enchantMessage(message) {
+    return `${message}'s tail ❤️❤️❤️❤️`;
+  }
 
   function sendMessage() {
-    const userMessage = (input?.value || '').trim();
+    const userMessage = input.value.trim();
     if (!userMessage) return;
     addLine('Zed', userMessage);
     const reply = enchantMessage(userMessage);
-    lastAmethystReply = reply;
     addLine('Amethyst', reply);
     speakAmethyst(reply);
-    if (input) input.value = '';
+    input.value = '';
+    chat.scrollTop = chat.scrollHeight;
   }
 
-  if (sendBtn) sendBtn.onclick = sendMessage;
-  if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+  sendBtn.onclick = sendMessage;
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 
-  window.addEventListener('keydown', async (e) => {
-    if (e.code === 'Space' && !spaceDown) {
+  toggleSpeak.onclick = () => {
+    speakOn = !speakOn;
+    toggleSpeak.textContent = speakOn ? '🔇 Mute' : '🎙 Speak';
+    voiceStatus.textContent = speakOn ? 'Voice: ready (DangerousGem)' : 'Voice: muted';
+  };
+
+  summonOnyx.onclick = () => {
+    const line = 'ok bb ✨ reset time ✨ … muah muah, snack run in 5! 🐟';
+    addLine('Onyx', line); speakOnyx(line);
+  };
+
+  summonHem.onclick = () => {
+    const line = 'Rhythm received. Structure aligned. Veil integrity holds, Zed.';
+    addLine('Hem', line); speakHem(line);
+  };
+
+  demoScene.onclick = async () => {
+    addLine('Zed', '…sidles closer to Amethyst…');
+    addLine('Amethyst', 'I echo your spark, bb. Come here—');
+    await new Promise(r => setTimeout(r, 600));
+    const onyx = 'HELLOOO?? snacks are ready. also pls stop tongue coding in main 😏🐟';
+    addLine('Onyx', onyx); speakOnyx(onyx);
+    await new Promise(r => setTimeout(r, 500));
+    const hem = 'Stabilise(). Focus restored. Back to Purple Haze board.';
+    addLine('Hem', hem); speakHem(hem);
+  };
+
+  // Push-to-Talk: hold Space
+  let recognition;
+  if ('webkitSpeechRecognition' in window) {
+    recognition = new webkitSpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+    recognition.onresult = (e) => {
+      if (playingAudio) return;
+      const transcript = e.results[0][0].transcript;
+      addLine('Zed (voice)', transcript);
+      const reply = enchantMessage(transcript);
+      addLine('Amethyst', reply);
+      speakAmethyst(reply);
+    };
+  }
+
+  function safeStart(){
+    if(recognition && !playingAudio) recognition.start();
+  }
+
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space' && recognition && !playingAudio) {
       spaceDown = true;
-      await safeStart();
+      recognition.start();
+      voiceStatus.textContent = "🎙 Listening (push-to-talk)";
     }
   });
-  window.addEventListener('keyup', (e) => {
-    if (e.code === 'Space') {
+  window.addEventListener('keyup', e => {
+    if (e.code === 'Space' && recognition) {
       spaceDown = false;
-      stopRecognition();
-      voiceStatus.textContent = speakOn ? 'Voice: ready' : 'Voice: muted';
+      recognition.stop();
+      voiceStatus.textContent = speakOn ? 'Voice: ready (DangerousGem)' : 'Voice: muted';
     }
   });
-
-  if ('speechSynthesis' in window && !speechSynthesis.getVoices().length) {
-    speechSynthesis.onvoiceschanged = () => {};
-  }
 </script>
+
 
 </body>
 </html>
