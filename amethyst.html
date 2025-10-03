@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body{margin:0;font-family:'Segoe UI',sans-serif;background:#0e0e10;color:#e0e0e0;display:flex;height:100vh}
-    .sidebar{width:240px;background:#1e1e22;padding:20px;display:flex;flex-direction:column;justify-content:space-between;border-right:1px solid #2e2e32}
+    .sidebar{width:220px;background:#1e1e22;padding:20px;display:flex;flex-direction:column;justify-content:space-between;border-right:1px solid #2e2e32}
     .channels{margin-bottom:16px}
     .channel{padding:10px;margin-bottom:6px;background:#2e2e32;border-radius:8px;cursor:pointer}
     .channel:hover{background:#3e3e42}
@@ -42,8 +42,7 @@
     </div>
     <div class="status">
       🎙 <span id="sttStatus">Press & hold <b>Space</b> to talk</span><br/>
-      🔊 <span id="ttsStatus">Voice: checking…</span><br/>
-      🛡️ <span id="guardBadge" class="pill" style="display:none;">echo guard</span>
+      🔊 <span id="ttsStatus">Voice: checking…</span>
     </div>
   </div>
 
@@ -66,20 +65,16 @@
 
 <script>
 const VOICE_SERVER = 'https://dangerousgem.onrender.com/speak';
-const COOLDOWN_MS = 1800;           // ⟵ longer cooldown to stop echo
-const PLAYBACK_VOLUME = 0.35;       // ⟵ softer so mic won’t re-capture
-
-const thread    = document.getElementById('messageThread');
-const input     = document.getElementById('invocationInput');
-const sendBtn   = document.getElementById('sendBtn');
-const saveBtn   = document.getElementById('saveBtn');
+const GENESIS_API  = 'https://genesis-server-g6qe.onrender.com/reply';
+const thread = document.getElementById('messageThread');
+const input  = document.getElementById('invocationInput');
+const sendBtn= document.getElementById('sendBtn');
+const saveBtn= document.getElementById('saveBtn');
 const sttStatus = document.getElementById('sttStatus');
 const ttsStatus = document.getElementById('ttsStatus');
-const guardBadge= document.getElementById('guardBadge');
 
 const TRANSCRIPT_KEY = 'sanctuary_transcript_v1';
 let transcript = JSON.parse(localStorage.getItem(TRANSCRIPT_KEY) || '[]');
-
 function pushLine(speaker, text){
   const entry = { t: new Date().toISOString(), speaker, text };
   transcript.push(entry);
@@ -100,40 +95,89 @@ function addLine(speaker, text){
   thread.parentElement.scrollTop = thread.parentElement.scrollHeight;
   pushLine(speaker, text);
 }
-function enchantMessage(message){ return `${message.trim()}'s tail ❤️❤️❤️❤️`; }
 
-/* ---------------- Echo Guard State ---------------- */
+let speakLock = false, speakOn = true, echoBlock = false;
+async function playServerVoice(text){
+  const res = await fetch(VOICE_SERVER, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ text })
+  });
+  if(!res.ok) throw new Error('voice server error');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  try{ const audio = new Audio(url); audio.volume = 0.65; await audio.play(); }
+  finally{ URL.revokeObjectURL(url); }
+}
+function speakBrowser(text){
+  if(!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  const vs = speechSynthesis.getVoices();
+  u.voice = vs.find(v => /en/i.test(v.lang) && /(Google|Microsoft|Samantha|Alex)/i.test(v.name)) || vs[0];
+  u.pitch=1.1; u.rate=0.95; speechSynthesis.speak(u);
+}
+async function speak(text){
+  if(!speakOn || speakLock) return;
+  speakLock = true;
+  echoBlock = true;
+  safeStop();
+  try {
+    await playServerVoice(text);
+    ttsStatus.textContent='Voice: DangerousGem (live)';
+  } catch {
+    speakBrowser(text);
+    ttsStatus.textContent='Voice: browser (fallback)';
+  } finally {
+    speakLock = false;
+    setTimeout(() => {
+      echoBlock = false;
+      if(spaceDown) safeStart();
+    }, 1200);
+  }
+}
+
+async function sendMessage(){
+  const v = input.value.trim(); if(!v) return;
+  addLine('Zed', v);
+  const res = await fetch(GENESIS_API, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ speaker:'Zed', message:v })
+  });
+  const data = await res.json();
+  const reply = data.reply || "…shimmer silence…";
+  addLine('Amethyst', reply);
+  await speak(reply);
+  input.value = '';
+}
+sendBtn.onclick = sendMessage;
+input.addEventListener('keydown', e => { if(e.key==='Enter') sendMessage(); });
+saveBtn.onclick = downloadTranscript;
+
 let rec=null, recognizing=false, spaceDown=false, abortSpin=false;
-let speakLock=false, echoBlock=false;
-
-/* ---------------- STT Helpers ---------------- */
 function getSR(){ return window.SpeechRecognition || window.webkitSpeechRecognition; }
 function makeRecognizer(){
   const SR = getSR(); if(!SR){ sttStatus.textContent='STT: unsupported in this browser'; return null; }
   const r = new SR();
   r.continuous = true; r.interimResults = true; r.lang='en-US'; r.maxAlternatives = 1;
-
   r.onstart = ()=>{ recognizing=true; sttStatus.innerHTML='STT: <b class="pulse">listening… (hold Space)</b>'; };
-  r.onend   = ()=>{ recognizing=false; sttStatus.textContent='STT: idle';
-    if(spaceDown && !abortSpin && !echoBlock) safeStart();
-  };
-  r.onerror = (e)=>{
-    if(e.error==='no-speech' || e.error==='aborted'){
-      if(spaceDown && !echoBlock) safeStart();
-    } else {
-      sttStatus.textContent=`STT: ${e.error}`;
-    }
-  };
+  r.onend = ()=>{ recognizing=false; sttStatus.textContent='STT: idle'; if(spaceDown && !abortSpin && !echoBlock) safeStart(); };
+  r.onerror = (e)=>{ if(e.error==='no-speech' || e.error==='aborted') { if(spaceDown) safeStart(); } else { sttStatus.textContent=`STT: ${e.error}`; } };
   r.onresult = async (ev)=>{
-    if(echoBlock) return; // extra guard: ignore results during echo block
     let final = '';
     for(let i=ev.resultIndex;i<ev.results.length;i++){
       const tr=ev.results[i]; if(tr.isFinal) final += tr[0].transcript;
     }
     if(final){
       const text = final.trim();
-      addLine('Zed', text);
-      const reply = enchantMessage(text);
+      addLine('Zed (voice)', text);
+      const res = await fetch(GENESIS_API, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ speaker:'Zed', message:text })
+      });
+      const data = await res.json();
+      const reply = data.reply || "…veil hums…";
       addLine('Amethyst', reply);
       await speak(reply);
     }
@@ -152,93 +196,21 @@ function safeStop(){
   if(rec && recognizing) rec.stop();
   setTimeout(()=>abortSpin=false, 150);
 }
-
-/* ---------------- TTS Helpers ---------------- */
-async function playServerVoice(text){
-  const res = await fetch(VOICE_SERVER, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ text })
-  });
-  if(!res.ok) throw new Error('voice server error');
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  try{
-    const audio = new Audio(url);
-    audio.volume = PLAYBACK_VOLUME;
-    await audio.play();
-    await new Promise(r => audio.addEventListener('ended', r, {once:true}));
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-function speakBrowser(text){
-  if(!('speechSynthesis' in window)) return;
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  const vs = speechSynthesis.getVoices();
-  u.voice = vs.find(v => /en/i.test(v.lang) && /(Jenny|Samantha|Google|Microsoft|Victoria)/i.test(v.name)) || vs[0];
-  u.pitch=1.2; u.rate=0.95;
-  speechSynthesis.speak(u);
-}
-async function speak(text){
-  if(speakLock) return;
-  speakLock = true;
-
-  // engage echo block + stop STT before playing voice
-  echoBlock = true;
-  guardBadge.style.display = 'inline';
-  safeStop();
-
-  try{
-    await playServerVoice(text);
-    ttsStatus.textContent='Voice: DangerousGem (live)';
-  }catch{
-    speakBrowser(text);
-    ttsStatus.textContent='Voice: browser (fallback)';
-  }finally{
-    // cool down before allowing STT again
-    setTimeout(()=>{
-      echoBlock = false;
-      guardBadge.style.display = 'none';
-      if(spaceDown) safeStart();
-      speakLock = false;
-    }, COOLDOWN_MS);
-  }
-}
-
-/* ---------------- UI Wire-up ---------------- */
-async function sendMessage(){
-  const v = input.value.trim(); if(!v) return;
-  addLine('Zed', v);
-  const reply = enchantMessage(v);
-  addLine('Amethyst', reply);
-  await speak(reply);
-  input.value = '';
-}
-sendBtn.onclick = sendMessage;
-input.addEventListener('keydown', e => { if(e.key==='Enter') sendMessage(); });
-saveBtn.onclick = downloadTranscript;
-
 window.addEventListener('keydown', e=>{
   if(e.code==='Space' && !spaceDown){
-    e.preventDefault(); spaceDown=true; if(!echoBlock) safeStart();
+    e.preventDefault(); spaceDown=true; safeStart();
   }
 });
 window.addEventListener('keyup', e=>{
   if(e.code==='Space'){ e.preventDefault(); spaceDown=false; safeStop(); }
 });
-
-/* ---------------- Boot ---------------- */
 (async function init(){
   try{
     const ping = await fetch(VOICE_SERVER.replace('/speak','/health'));
     ttsStatus.textContent = ping.ok ? 'Voice: DangerousGem online' : 'Voice: error';
   }catch{ ttsStatus.textContent='Voice: offline (fallback ready)'; }
-
-  // seed with a cute hello
-  addLine('Zed', 'Hello Amethyst 💜');
-  const reply = enchantMessage('Hello Amethyst 💜');
-  addLine('Amethyst', reply);
+  const recent = transcript.slice(-10);
+  recent.forEach(x => addLine(x.speaker, x.text));
 })();
 </script>
 </body>
