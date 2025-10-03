@@ -86,28 +86,25 @@
   </div>
 
 <script>
-  // ===== CONFIG =====
   const VOICE_SERVER = 'https://dangerousgem.onrender.com/speak';
-  const COOLDOWN_MS = 800;
+  const COOLDOWN_MS = 1200;
 
-  // ===== STATE =====
-  let speakOn = true;                // you can toggle with your UI if you like
+  let speakOn = true;
   let playingAudio = false;
   let lastAmethystReply = '';
-  let sttEnabled = true;             // master STT toggle
-  let spaceDown = false;             // push-to-talk state
-  let recognizing = false;           // recognition active?
-  let rec = null;                    // recognition instance
-  let micStream = null;              // MediaStream to stop input track
+  let sttEnabled = true;
+  let spaceDown = false;
+  let recognizing = false;
+  let rec = null;
+  let micStream = null;
+  let lastSpeakEnded = 0;
 
-  // ===== UI HOOKS (optional; safe if absent) =====
   const voiceStatus = document.getElementById('voiceStatus') || {textContent:''};
   const guardStatus = document.getElementById('guardStatus') || {style:{display:'none'}};
   const chat = document.getElementById('chat');
   const input = document.getElementById('messageInput');
   const sendBtn = document.getElementById('sendBtn');
 
-  // ===== UTIL =====
   function addLine(speaker, text) {
     const p = document.createElement('p');
     p.className = 'message';
@@ -115,26 +112,17 @@
     chat.appendChild(p);
     chat.scrollTop = chat.scrollHeight;
   }
+
   function enchantMessage(message) {
     return `${message}'s tail ❤️❤️❤️❤️`;
   }
 
-  // ===== MIC CONTROL =====
   async function ensureMic() {
     if (micStream) return micStream;
-    try {
-      micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      });
-      return micStream;
-    } catch {
-      micStream = null;
-      return null;
-    }
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }
+    });
+    return micStream;
   }
   function stopMicTrack() {
     if (micStream) {
@@ -144,30 +132,25 @@
     }
   }
 
-  // ===== STT =====
   function createRec() {
     if (!('webkitSpeechRecognition' in window)) return null;
     const r = new webkitSpeechRecognition();
-    r.lang = 'en-US';
-    r.continuous = false;
-    r.interimResults = false;
+    r.lang = 'en-US'; r.continuous = false; r.interimResults = false;
 
     r.onstart = () => { recognizing = true; voiceStatus.textContent = '🎙 Listening (PTT)'; };
     r.onend   = () => { recognizing = false; voiceStatus.textContent = speakOn ? 'Voice: ready' : 'Voice: muted'; };
-    r.onerror = () => { recognizing = false; };
 
     r.onresult = (e) => {
-      if (playingAudio) return; // hard guard
+      if (playingAudio) return;
+      if (Date.now() - lastSpeakEnded < COOLDOWN_MS) return;
       const transcript = (e.results?.[0]?.[0]?.transcript || '').trim();
       const confidence = (e.results?.[0]?.[0]?.confidence ?? 1);
-      if (!transcript) return;
-      // dup/echo filter
+      if (!transcript || confidence < 0.55) return;
       if (
         transcript === lastAmethystReply ||
         transcript.endsWith("'s tail ❤️❤️❤️❤️") ||
         transcript === lastAmethystReply.replace(/'s tail ❤️❤️❤️❤️$/,'')
       ) return;
-      if (confidence < 0.55) return;
 
       addLine('Zed (voice)', transcript);
       const reply = enchantMessage(transcript);
@@ -175,33 +158,29 @@
       addLine('Amethyst', reply);
       speakAmethyst(reply);
     };
-
     return r;
   }
 
   function stopRecognition() {
-    if (rec && recognizing) {
-      try { rec.stop(); } catch {}
-    }
+    try { if (rec && recognizing) { rec.abort?.(); rec.stop?.(); } } catch {}
     recognizing = false;
-    // also kill mic immediately
     stopMicTrack();
   }
 
   async function safeStart() {
-    if (playingAudio || !sttEnabled) return;
+    if (!sttEnabled || playingAudio) return;
+    if (Date.now() - lastSpeakEnded < COOLDOWN_MS) {
+      setTimeout(() => { if (spaceDown) safeStart(); }, COOLDOWN_MS);
+      return;
+    }
     if (!rec) rec = createRec();
     if (!rec) return;
-    // (re)open mic with AEC/NS/AGC
     await ensureMic();
     try { rec.start(); } catch {}
   }
 
-  // ===== VOICE OUT =====
   async function playServerVoice(text) {
-    // stop STT & mic before speaking
     stopRecognition();
-
     playingAudio = true;
     guardStatus.style.display = 'inline';
 
@@ -210,7 +189,7 @@
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ text })
     });
-    if(!res.ok) throw new Error('voice server error');
+    if (!res.ok) throw new Error('voice server error');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
 
@@ -218,31 +197,30 @@
       const audio = new Audio(url);
       await audio.play();
       await new Promise(r => audio.addEventListener('ended', r, {once:true}));
-      await new Promise(r => setTimeout(r, COOLDOWN_MS)); // buffer delay
+      await new Promise(r => setTimeout(r, COOLDOWN_MS));
     } finally {
       playingAudio = false;
       guardStatus.style.display = 'none';
-      URL.revokeObjectURL(url); // ✅ fixed missing paren
-      // only re-arm STT if user is still holding Space
+      URL.revokeObjectURL(url);
+      lastSpeakEnded = Date.now();
       if (spaceDown && sttEnabled) safeStart();
     }
   }
 
   function speakBrowser(text) {
-    if (!('speechSynthesis' in window)) return;
     stopRecognition();
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     const vs = speechSynthesis.getVoices();
     u.voice = vs.find(v => /en/i.test(v.lang) && /(Jenny|Samantha|Google|Microsoft|Victoria)/i.test(v.name)) || vs[0];
     u.rate = 0.95; u.pitch = 1.25;
-
     playingAudio = true;
     guardStatus.style.display = 'inline';
     u.onend = () => {
       setTimeout(() => {
         playingAudio = false;
         guardStatus.style.display = 'none';
+        lastSpeakEnded = Date.now();
         if (spaceDown && sttEnabled) safeStart();
       }, COOLDOWN_MS);
     };
@@ -260,7 +238,6 @@
     }
   }
 
-  // ===== SEND (typed) =====
   function sendMessage() {
     const userMessage = (input?.value || '').trim();
     if (!userMessage) return;
@@ -272,11 +249,9 @@
     if (input) input.value = '';
   }
 
-  // ===== WIRE UI =====
   if (sendBtn) sendBtn.onclick = sendMessage;
   if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 
-  // Push-to-talk (Space)
   window.addEventListener('keydown', async (e) => {
     if (e.code === 'Space' && !spaceDown) {
       spaceDown = true;
@@ -291,12 +266,10 @@
     }
   });
 
-  // Preload TTS voices (no-op if none)
   if ('speechSynthesis' in window && !speechSynthesis.getVoices().length) {
     speechSynthesis.onvoiceschanged = () => {};
   }
 </script>
-
 
 </body>
 </html>
